@@ -1,0 +1,55 @@
+includes:
+  - configs/model/qwen25_7b.yaml
+  - configs/retrieval/bge_faiss.yaml
+  - configs/method/revise_verify.yaml
+
+project:
+  name: dont-bluff-verify-legal
+  seed: 42
+  year: 2021
+
+paths:
+  data_dir: data
+  index_dir: data/index/housingqa_bge_faiss
+  outputs_dir: outputs
+
+data:
+  primary_dataset: housingqa
+  housingqa:
+    questions_dataset: reglab/housing_qa
+    questions_config: questions
+    questions_split: test
+    statutes_dataset: reglab/housing_qa
+    statutes_config: statutes
+    statutes_split: corpus
+    local_cache_dir: data/housingqa
+  legalqa_local:
+    enabled: false
+    path: null
+    format: jsonl
+
+runtime:
+  device: cuda
+  dtype: auto
+  batch_size: 16
+  num_workers: 0
+
+generation:
+  temperature: 0.0
+  top_p: 0.95
+  max_new_tokens: 512
+  json_max_retries: 2
+
+evaluation:
+  retrieval_ks: [1, 3, 5, 10]
+  case_study_limit: 25
+  unsupported_threshold: 0.55
+
+ablations:
+  claim_decomposition: true
+  query_rewrite: true
+  reranker: true
+  second_pass_verification: true
+  abstain: true
+  support_scorer: judge_assisted
+

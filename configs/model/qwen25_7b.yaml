@@ -1,0 +1,11 @@
+model:
+  generator:
+    backend: vllm
+    model_name: Qwen/Qwen2.5-7B-Instruct
+    trust_remote_code: false
+    tensor_parallel_size: 1
+    gpu_memory_utilization: 0.9
+    max_model_len: 4096
+    adapter_path: null
+    transformers_device_map: auto
+

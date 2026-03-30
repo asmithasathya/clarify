@@ -1,0 +1,6 @@
+method:
+  name: hedge
+  retrieval: true
+  hedging: true
+  verification: false
+

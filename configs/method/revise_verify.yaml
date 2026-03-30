@@ -1,0 +1,6 @@
+method:
+  name: revise_verify
+  retrieval: true
+  hedging: false
+  verification: true
+

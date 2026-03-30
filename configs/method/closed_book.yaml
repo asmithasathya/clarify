@@ -1,0 +1,6 @@
+method:
+  name: closed_book
+  retrieval: false
+  hedging: false
+  verification: false
+
