@@ -10,6 +10,7 @@ from src.llm.prompts import (
     alternatives_prompt,
     clarification_question_prompt,
     direct_answer_prompt,
+    generic_clarification_prompt,
     narrowed_answer_prompt,
     schema_instruction,
 )
@@ -31,6 +32,14 @@ def _fallback_clarification(target_variable: str, request: str) -> Clarification
         question=f"Could you tell me more about {target_variable}? That would help me give you a better answer.",
         target_variable=target_variable,
         why_this_helps=f"Resolving '{target_variable}' would disambiguate the request.",
+    )
+
+
+def _fallback_generic_clarification() -> ClarificationQuestionSchema:
+    return ClarificationQuestionSchema(
+        question="Could you share a bit more detail about what you need?",
+        target_variable="general context",
+        why_this_helps="More context would make the request easier to answer well.",
     )
 
 
@@ -61,7 +70,10 @@ class ClarificationGenerator:
         intent_model: IntentModelSchema,
     ) -> ClarificationQuestionSchema:
         """Generate a single targeted clarifying question."""
+        use_targeted_question = self.config.get("ablations", {}).get("targeted_question", True)
         if self.generator is None:
+            if not use_targeted_question:
+                return _fallback_generic_clarification()
             return _fallback_clarification(target_variable, request)
 
         interp_lines = []
@@ -69,13 +81,21 @@ class ClarificationGenerator:
             interp_lines.append(f"{idx}. {interp.description} (plausibility={interp.plausibility:.2f})")
         interp_summary = "\n".join(interp_lines)
 
-        return self.generator.generate_structured(
+        prompt = (
             clarification_question_prompt(
                 request=request,
                 target_variable=target_variable,
                 interpretations_summary=interp_summary,
                 schema_text=schema_instruction(ClarificationQuestionSchema),
-            ),
+            )
+            if use_targeted_question
+            else generic_clarification_prompt(
+                request=request,
+                schema_text=schema_instruction(ClarificationQuestionSchema),
+            )
+        )
+        return self.generator.generate_structured(
+            prompt,
             ClarificationQuestionSchema,
             temperature=0.0,
         )

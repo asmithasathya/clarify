@@ -147,6 +147,172 @@ def test_targeted_clarify():
     assert "investment" in result.clarification_question.lower() or "invest" in result.clarification_question.lower()
 
 
+def test_targeted_clarify_generic_question_ablation():
+    config = make_config()
+    config["ablations"]["targeted_question"] = False
+
+    def generic_only_responder(messages):
+        prompt = messages[-1]["content"]
+        if "ambiguous or underspecified" in prompt:
+            return json.dumps({
+                "is_ambiguous": True,
+                "ambiguity_type": "missing_context",
+                "missing_variables": [
+                    {"variable": "investment type", "why_missing": "not specified", "importance": 0.9},
+                ],
+                "confidence": 0.85,
+                "rationale": "The request is underspecified.",
+            })
+        if "2-4 plausible" in prompt:
+            return json.dumps({
+                "interpretations": [
+                    {"description": "Retirement savings", "assumed_context": "Long-term", "plausibility": 0.6},
+                    {"description": "Day trading", "assumed_context": "Short-term", "plausibility": 0.2},
+                ],
+                "most_likely_index": 0,
+                "entropy_estimate": "high",
+                "gap_description": "Investment type unknown.",
+            })
+        if "best response strategy" in prompt or "Choose the best" in prompt:
+            return json.dumps({
+                "strategy": "ask_clarification",
+                "rationale": "Key variable missing.",
+                "confidence": 0.8,
+            })
+        if "Generate a single, targeted clarifying question" in prompt:
+            raise AssertionError("targeted clarification prompt should be disabled by ablation")
+        if "Before answering" in prompt and "clarifying question" in prompt:
+            return json.dumps({
+                "question": "Could you share a bit more detail about what kind of investing help you want?",
+                "target_variable": "general context",
+                "why_this_helps": "More context would help.",
+            })
+        raise AssertionError(f"Unexpected prompt: {prompt[:120]}")
+
+    generator = MockGenerator(responder=generic_only_responder, config=config)
+    result = run_targeted_clarify(
+        make_example(),
+        config=config,
+        ambiguity_detector=AmbiguityDetector(config, generator=generator),
+        intent_modeler=IntentModeler(config, generator=generator),
+        strategy_selector=StrategySelector(config, generator=generator),
+        clarification_generator=ClarificationGenerator(config, generator=generator),
+    )
+    assert result.response_strategy == "ask_clarification"
+    assert result.clarification_question is not None
+    assert "share a bit more detail" in result.clarification_question.lower()
+
+
+def test_targeted_clarify_narrowed_answer_uses_safe_index_fallback():
+    config = make_config()
+
+    def narrowed_responder(messages):
+        prompt = messages[-1]["content"]
+        if "ambiguous or underspecified" in prompt:
+            return json.dumps({
+                "is_ambiguous": True,
+                "ambiguity_type": "missing_context",
+                "missing_variables": [
+                    {"variable": "investment type", "why_missing": "not specified", "importance": 0.9},
+                ],
+                "confidence": 0.85,
+                "rationale": "The request is underspecified.",
+            })
+        if "2-4 plausible" in prompt:
+            return json.dumps({
+                "interpretations": [
+                    {"description": "Retirement savings", "assumed_context": "Long-term", "plausibility": 0.6},
+                    {"description": "Day trading", "assumed_context": "Short-term", "plausibility": 0.2},
+                ],
+                "most_likely_index": 99,
+                "entropy_estimate": "medium",
+                "gap_description": "Investment type unknown.",
+            })
+        if "best response strategy" in prompt or "Choose the best" in prompt:
+            return json.dumps({
+                "strategy": "narrow_and_answer",
+                "rationale": "Use the most likely interpretation.",
+                "confidence": 0.7,
+            })
+        if "Assumed interpretation: Retirement savings" in prompt:
+            return json.dumps({
+                "stated_assumption": "Retirement savings",
+                "answer": "Consider index funds for retirement savings.",
+                "confidence": 0.72,
+                "caveats": None,
+            })
+        raise AssertionError(f"Unexpected prompt: {prompt[:120]}")
+
+    generator = MockGenerator(responder=narrowed_responder, config=config)
+    result = run_targeted_clarify(
+        make_example(),
+        config=config,
+        ambiguity_detector=AmbiguityDetector(config, generator=generator),
+        intent_modeler=IntentModeler(config, generator=generator),
+        strategy_selector=StrategySelector(config, generator=generator),
+        clarification_generator=ClarificationGenerator(config, generator=generator),
+    )
+    assert result.response_strategy == "narrow_and_answer"
+    assert result.answered_directly is False
+    assert result.assumed_interpretation == "Retirement savings"
+    assert result.trace["most_likely_index_adjustment"]["reason"] == "out_of_range_fallback"
+
+
+def test_targeted_clarify_alternatives_are_not_marked_as_question():
+    config = make_config()
+
+    def alternatives_responder(messages):
+        prompt = messages[-1]["content"]
+        if "ambiguous or underspecified" in prompt:
+            return json.dumps({
+                "is_ambiguous": True,
+                "ambiguity_type": "missing_context",
+                "missing_variables": [
+                    {"variable": "investment type", "why_missing": "not specified", "importance": 0.9},
+                ],
+                "confidence": 0.85,
+                "rationale": "The request is underspecified.",
+            })
+        if "2-4 plausible" in prompt:
+            return json.dumps({
+                "interpretations": [
+                    {"description": "Retirement savings", "assumed_context": "Long-term", "plausibility": 0.4},
+                    {"description": "Buying a house", "assumed_context": "Medium-term", "plausibility": 0.35},
+                    {"description": "Day trading", "assumed_context": "Short-term", "plausibility": 0.15},
+                ],
+                "most_likely_index": 0,
+                "entropy_estimate": "high",
+                "gap_description": "Investment type unknown.",
+            })
+        if "best response strategy" in prompt or "Choose the best" in prompt:
+            return json.dumps({
+                "strategy": "present_alternatives",
+                "rationale": "Several plausible meanings remain.",
+                "confidence": 0.7,
+            })
+        if "multiple valid interpretations" in prompt:
+            return json.dumps({
+                "preamble": "Your request could mean a few different things:",
+                "alternatives": [
+                    {"interpretation": "Retirement savings", "answer": "Index funds are a common long-term option."},
+                    {"interpretation": "Buying a house", "answer": "Safer, more liquid assets may fit better."},
+                ],
+            })
+        raise AssertionError(f"Unexpected prompt: {prompt[:120]}")
+
+    generator = MockGenerator(responder=alternatives_responder, config=config)
+    result = run_targeted_clarify(
+        make_example(),
+        config=config,
+        ambiguity_detector=AmbiguityDetector(config, generator=generator),
+        intent_modeler=IntentModeler(config, generator=generator),
+        strategy_selector=StrategySelector(config, generator=generator),
+        clarification_generator=ClarificationGenerator(config, generator=generator),
+    )
+    assert result.response_strategy == "present_alternatives"
+    assert result.asked_clarification is False
+
+
 def test_targeted_clarify_clear_request():
     """When ambiguity detection says 'not ambiguous', should answer directly."""
     config = make_config()

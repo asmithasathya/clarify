@@ -11,6 +11,28 @@ from src.understand.intent_model import IntentModeler
 from src.understand.strategy_selector import StrategySelector
 
 
+def _resolve_interpretation_index(trace: dict[str, Any], raw_index: int, count: int) -> int:
+    if count <= 0:
+        raise ValueError("Intent model returned no interpretations to choose from.")
+    if 0 <= raw_index < count:
+        return raw_index
+    if 1 <= raw_index <= count:
+        resolved = raw_index - 1
+        trace["most_likely_index_adjustment"] = {
+            "raw_index": raw_index,
+            "resolved_index": resolved,
+            "reason": "converted_one_based_index",
+        }
+        return resolved
+
+    trace["most_likely_index_adjustment"] = {
+        "raw_index": raw_index,
+        "resolved_index": 0,
+        "reason": "out_of_range_fallback",
+    }
+    return 0
+
+
 def run_targeted_clarify(
     example: DialogueExample,
     *,
@@ -87,7 +109,12 @@ def run_targeted_clarify(
         )
 
     if strategy == "narrow_and_answer":
-        most_likely = intent.interpretations[intent.most_likely_index]
+        resolved_index = _resolve_interpretation_index(
+            trace,
+            intent.most_likely_index,
+            len(intent.interpretations),
+        )
+        most_likely = intent.interpretations[resolved_index]
         narrowed = clarification_generator.generate_narrowed_answer(
             example.user_request, most_likely.description,
         )
@@ -106,7 +133,6 @@ def run_targeted_clarify(
             is_ambiguous_detected=True,
             confidence=narrowed.confidence,
             num_missing_variables=n_missing,
-            answered_directly=True,
             trace=trace,
         )
 
@@ -128,7 +154,6 @@ def run_targeted_clarify(
             is_ambiguous_detected=True,
             confidence=decision.confidence,
             num_missing_variables=n_missing,
-            asked_clarification=True,
             trace=trace,
         )
 
