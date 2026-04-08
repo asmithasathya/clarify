@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install install-dev install-vllm test build-index demo eval
+.PHONY: install install-dev install-vllm test demo eval download
 
 install:
 	$(PYTHON) -m pip install -e .
@@ -14,12 +14,11 @@ install-vllm:
 test:
 	$(PYTHON) -m pytest
 
-build-index:
-	$(PYTHON) scripts/build_statute_index.py --config configs/default.yaml
+download:
+	$(PYTHON) -m scripts.download_infoquest
 
 demo:
-	$(PYTHON) scripts/demo_example.py
+	$(PYTHON) -m scripts.demo_example
 
 eval:
-	$(PYTHON) scripts/run_eval.py --config configs/default.yaml --methods closed_book rag_direct hedge revise_verify
-
+	$(PYTHON) scripts/run_eval.py --methods direct_answer generic_hedge generic_clarify targeted_clarify

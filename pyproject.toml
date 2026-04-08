@@ -3,22 +3,20 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dont-bluff-verify-legal"
+name = "clarify"
 version = "0.1.0"
-description = "Research-first legal QA repository for verification-oriented revision on HousingQA."
+description = "Research repository for studying when and how an assistant should clarify ambiguous user requests instead of answering prematurely."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-  {name = "dont-bluff-verify-legal contributors"}
+  {name = "clarify contributors"}
 ]
 dependencies = [
   "datasets>=2.19.0",
-  "faiss-cpu>=1.8.0",
   "numpy>=1.26.0",
   "pydantic>=2.7.0",
   "PyYAML>=6.0.1",
-  "sentence-transformers>=3.0.0",
   "torch>=2.2.0",
   "transformers>=4.41.0",
   "typer>=0.12.3",
@@ -47,4 +45,3 @@ include = ["src*"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-

@@ -1,32 +1,20 @@
 includes:
   - configs/model/qwen25_7b.yaml
-  - configs/retrieval/bge_faiss.yaml
-  - configs/method/revise_verify.yaml
+  - configs/method/targeted_clarify.yaml
 
 project:
-  name: dont-bluff-verify-legal
+  name: clarify
   seed: 42
-  year: 2021
 
 paths:
   data_dir: data
-  index_dir: data/index/housingqa_bge_faiss
   outputs_dir: outputs
 
 data:
-  primary_dataset: housingqa
-  housingqa:
-    questions_dataset: reglab/housing_qa
-    questions_config: questions
-    questions_split: test
-    statutes_dataset: reglab/housing_qa
-    statutes_config: statutes
-    statutes_split: corpus
-    local_cache_dir: data/housingqa
-  legalqa_local:
-    enabled: false
-    path: null
-    format: jsonl
+  primary_dataset: infoquest
+  infoquest:
+    both_settings: true
+    local_path: null  # set to a local .jsonl path for offline use
 
 runtime:
   device: cuda
@@ -40,16 +28,15 @@ generation:
   max_new_tokens: 512
   json_max_retries: 2
 
+understand:
+  ambiguity_threshold: 0.5
+  max_clarification_turns: 1
+
 evaluation:
-  retrieval_ks: [1, 3, 5, 10]
   case_study_limit: 25
-  unsupported_threshold: 0.55
 
 ablations:
-  claim_decomposition: true
-  query_rewrite: true
-  reranker: true
-  second_pass_verification: true
-  abstain: true
-  support_scorer: judge_assisted
-
+  ambiguity_detection: true
+  intent_modeling: true
+  strategy_selection: true
+  targeted_question: true

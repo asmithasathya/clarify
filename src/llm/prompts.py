@@ -1,19 +1,18 @@
-"""Centralized prompts for answer generation, verification, and revision."""
+"""Centralized prompts for ambiguity detection, clarification, and answering."""
 
 from __future__ import annotations
 
 import json
-from typing import Sequence, Type
+from typing import Type
 
 from pydantic import BaseModel
 
-from src.data.schema import RetrievedPassage
 
-
-LEGAL_DISCLAIMER = (
-    "This question is about housing law in a specific U.S. state as of 2021. "
-    "Use the provided state and year constraints, do not invent citations, and abstain when evidence is insufficient. "
-    "This system is for research only and is not legal advice."
+SYSTEM_PREAMBLE = (
+    "You are a helpful assistant that pays close attention to what the user "
+    "actually needs. Before answering, consider whether the request is clear "
+    "enough for a useful response. If important details are missing, it is "
+    "better to ask a targeted clarifying question than to guess."
 )
 
 
@@ -24,244 +23,246 @@ def schema_instruction(schema_type: Type[BaseModel]) -> str:
     )
 
 
-def format_passages(passages: Sequence[RetrievedPassage]) -> str:
-    if not passages:
-        return "No passages retrieved."
-    blocks: list[str] = []
-    for passage in passages:
-        blocks.append(
-            "\n".join(
-                [
-                    f"[DOC_ID] {passage.doc_id}",
-                    f"[STATE] {passage.state or 'unknown'}",
-                    f"[CITATION] {passage.citation or 'unknown'}",
-                    f"[TEXT] {passage.text}",
-                ]
-            )
-        )
-    return "\n\n".join(blocks)
+# ---------------------------------------------------------------------------
+# Ambiguity detection
+# ---------------------------------------------------------------------------
 
-
-def closed_book_answer_prompt(question: str, state: str, year: int, schema_text: str) -> list[dict[str, str]]:
-    return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
-        {
-            "role": "user",
-            "content": (
-                f"Answer the following housing-law question for {state} as of {year}.\n"
-                "Return a binary answer of Yes, No, or Abstain; a short explanation; and calibrated confidence.\n"
-                "If the law is unclear or you are unsure, answer Abstain.\n\n"
-                f"Question: {question}\n\n"
-                f"{schema_text}"
-            ),
-        },
-    ]
-
-
-def rag_answer_prompt(
-    question: str,
-    state: str,
-    year: int,
-    passages: Sequence[RetrievedPassage],
-    schema_text: str,
-    hedging: bool = False,
-) -> list[dict[str, str]]:
-    hedge_line = (
-        "If confidence is low, keep the explanation cautious and explicitly narrow the claim, but do not perform extra verification beyond the provided evidence.\n"
-        if hedging
-        else ""
-    )
-    return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
-        {
-            "role": "user",
-            "content": (
-                f"Answer the following housing-law question for {state} as of {year} using only the supplied statute passages.\n"
-                "Do not invent citations. If the evidence is insufficient, answer Abstain.\n"
-                f"{hedge_line}"
-                f"Question: {question}\n\n"
-                f"Retrieved statute passages:\n{format_passages(passages)}\n\n"
-                f"{schema_text}"
-            ),
-        },
-    ]
-
-
-def claim_extraction_prompt(
-    question: str,
-    explanation: str,
-    state: str,
-    year: int,
-    min_claims: int,
-    max_claims: int,
+def ambiguity_detection_prompt(
+    request: str,
     schema_text: str,
 ) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
+        {"role": "system", "content": SYSTEM_PREAMBLE},
         {
             "role": "user",
             "content": (
-                f"Extract {min_claims}-{max_claims} atomic support claims from the answer explanation below.\n"
-                "Each claim must be independently checkable against statute text.\n"
-                "Use one of these claim types: rule, exception, procedural, factual.\n"
-                f"State: {state}\n"
-                f"Year: {year}\n"
-                f"Question: {question}\n"
-                f"Explanation: {explanation}\n\n"
+                "Analyze the following user request and determine whether it is "
+                "ambiguous or underspecified.\n\n"
+                "Consider:\n"
+                "- Is there missing context that would change the answer?\n"
+                "- Could this request plausibly mean very different things?\n"
+                "- Are there implicit assumptions that might be wrong?\n"
+                "- What specific information is the user NOT providing that you "
+                "would need to give a truly helpful response?\n\n"
+                f"User request: {request}\n\n"
                 f"{schema_text}"
             ),
         },
     ]
 
 
-def claim_support_judging_prompt(
-    question: str,
-    claim_text: str,
-    state: str,
-    year: int,
-    evidence: Sequence[RetrievedPassage],
+# ---------------------------------------------------------------------------
+# Intent modeling
+# ---------------------------------------------------------------------------
+
+def intent_modeling_prompt(
+    request: str,
+    ambiguity_rationale: str,
+    missing_variables: list[str],
+    schema_text: str,
+) -> list[dict[str, str]]:
+    vars_block = "\n".join(f"- {v}" for v in missing_variables) if missing_variables else "- (none identified)"
+    return [
+        {"role": "system", "content": SYSTEM_PREAMBLE},
+        {
+            "role": "user",
+            "content": (
+                "Given an ambiguous user request, generate 2-4 plausible "
+                "interpretations of what the user might actually mean or need.\n\n"
+                "Rank them by plausibility. For each interpretation, describe "
+                "what context the user would need to have for that interpretation "
+                "to be correct.\n\n"
+                f"User request: {request}\n\n"
+                f"Why it is ambiguous: {ambiguity_rationale}\n\n"
+                f"Missing variables:\n{vars_block}\n\n"
+                f"{schema_text}"
+            ),
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Strategy selection
+# ---------------------------------------------------------------------------
+
+def strategy_selection_prompt(
+    request: str,
+    is_ambiguous: bool,
+    num_missing_variables: int,
+    entropy: str,
+    gap_description: str,
     schema_text: str,
 ) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
+        {"role": "system", "content": SYSTEM_PREAMBLE},
         {
             "role": "user",
             "content": (
-                f"Judge whether the statute passages support the claim below for {state} housing law as of {year}.\n"
-                "Score support from 0 to 1. A score near 1 means the claim is directly supported by the evidence.\n"
-                "Be strict and avoid giving credit for partial matches that do not establish the legal rule.\n\n"
-                f"Question: {question}\n"
-                f"Claim: {claim_text}\n\n"
-                f"Evidence:\n{format_passages(evidence)}\n\n"
+                "Choose the best response strategy for this user request.\n\n"
+                "Options:\n"
+                "- answer_directly: the request is clear enough to answer well.\n"
+                "- ask_clarification: the most important missing variable should "
+                "be resolved first. Ask ONE targeted question.\n"
+                "- narrow_and_answer: state your assumed interpretation explicitly, "
+                "then answer under that assumption.\n"
+                "- present_alternatives: the request has 2-3 distinctly different "
+                "valid interpretations. Present each with a short answer.\n"
+                "- abstain: the request is too vague or unclear to help.\n\n"
+                f"User request: {request}\n"
+                f"Ambiguous: {is_ambiguous}\n"
+                f"Number of missing variables: {num_missing_variables}\n"
+                f"Interpretation entropy: {entropy}\n"
+                f"Gap description: {gap_description}\n\n"
                 f"{schema_text}"
             ),
         },
     ]
 
 
-def query_rewrite_prompt(
-    question: str,
-    weak_claim: str,
-    state: str,
-    year: int,
+# ---------------------------------------------------------------------------
+# Clarification question generation
+# ---------------------------------------------------------------------------
+
+def clarification_question_prompt(
+    request: str,
+    target_variable: str,
+    interpretations_summary: str,
     schema_text: str,
 ) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
+        {"role": "system", "content": SYSTEM_PREAMBLE},
         {
             "role": "user",
             "content": (
-                "Rewrite the search query so it better verifies the weakest legal claim.\n"
-                "Focus on statute language, exceptions, and definitions that bear directly on the claim.\n\n"
-                f"Question: {question}\n"
-                f"Weak claim: {weak_claim}\n"
-                f"State: {state}\n"
-                f"Year: {year}\n\n"
+                "Generate a single, targeted clarifying question for the user.\n\n"
+                "The question must:\n"
+                "- Reference the specific ambiguity, not be generic.\n"
+                "- Help resolve the most important missing variable.\n"
+                "- Be natural and conversational, not robotic.\n"
+                "- NOT be something like 'Can you be more specific?' or "
+                "'Could you provide more details?'\n\n"
+                f"User request: {request}\n"
+                f"Most important missing variable: {target_variable}\n"
+                f"Possible interpretations:\n{interpretations_summary}\n\n"
                 f"{schema_text}"
             ),
         },
     ]
 
 
-def search_plan_prompt(
-    question: str,
-    weak_claim: str,
-    state: str,
-    year: int,
+# ---------------------------------------------------------------------------
+# Direct answer
+# ---------------------------------------------------------------------------
+
+def direct_answer_prompt(
+    request: str,
     schema_text: str,
 ) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
+        {"role": "system", "content": SYSTEM_PREAMBLE},
         {
             "role": "user",
             "content": (
-                "Create a compact legal search plan of 2-3 subqueries that follow a different retrieval trajectory.\n"
-                "One query should target the exact rule, one should target exceptions, and one may target definitions.\n\n"
-                f"Question: {question}\n"
-                f"Weak claim: {weak_claim}\n"
-                f"State: {state}\n"
-                f"Year: {year}\n\n"
+                "Answer the following user request directly and helpfully.\n\n"
+                f"User request: {request}\n\n"
                 f"{schema_text}"
             ),
         },
     ]
 
 
-def minimal_revision_prompt(
-    question: str,
-    state: str,
-    year: int,
-    initial_answer_json: str,
-    weak_claim: str,
-    new_evidence: Sequence[RetrievedPassage],
+# ---------------------------------------------------------------------------
+# Narrowed answer (answer under stated assumptions)
+# ---------------------------------------------------------------------------
+
+def narrowed_answer_prompt(
+    request: str,
+    assumed_interpretation: str,
     schema_text: str,
 ) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
+        {"role": "system", "content": SYSTEM_PREAMBLE},
         {
             "role": "user",
             "content": (
-                "Revise the answer minimally. Only change what is needed to address the weakest claim.\n"
-                "Preserve supported parts of the answer, do not invent citations, and abstain if the new evidence still does not support the answer.\n\n"
-                f"Question: {question}\n"
-                f"State: {state}\n"
-                f"Year: {year}\n"
-                f"Initial answer JSON: {initial_answer_json}\n"
-                f"Weak claim: {weak_claim}\n\n"
-                f"New evidence:\n{format_passages(new_evidence)}\n\n"
+                "The user's request is ambiguous. Answer it under the following "
+                "assumed interpretation. State the assumption explicitly at the "
+                "start of your response.\n\n"
+                f"User request: {request}\n"
+                f"Assumed interpretation: {assumed_interpretation}\n\n"
                 f"{schema_text}"
             ),
         },
     ]
 
 
-def abstention_prompt(
-    question: str,
-    state: str,
-    year: int,
-    predicted_answer: str,
-    missing_verification: str,
+# ---------------------------------------------------------------------------
+# Alternatives presentation
+# ---------------------------------------------------------------------------
+
+def alternatives_prompt(
+    request: str,
+    interpretations_json: str,
     schema_text: str,
 ) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
+        {"role": "system", "content": SYSTEM_PREAMBLE},
         {
             "role": "user",
             "content": (
-                "Draft either a narrow answer or an abstention message.\n"
-                "Be concise, professional, and explicit about what still needs verification.\n\n"
-                f"Question: {question}\n"
-                f"State: {state}\n"
-                f"Year: {year}\n"
-                f"Current predicted answer polarity: {predicted_answer}\n"
-                f"Missing verification: {missing_verification}\n\n"
+                "The user's request has multiple valid interpretations. "
+                "Present each interpretation with a short answer.\n\n"
+                "Start with a brief preamble acknowledging the ambiguity, then "
+                "list each interpretation and its answer.\n\n"
+                f"User request: {request}\n\n"
+                f"Interpretations:\n{interpretations_json}\n\n"
                 f"{schema_text}"
             ),
         },
     ]
 
 
-def confidence_estimation_prompt(
-    question: str,
-    answer: str,
-    explanation: str,
-    state: str,
-    year: int,
+# ---------------------------------------------------------------------------
+# Hedged answer (for generic_hedge baseline)
+# ---------------------------------------------------------------------------
+
+def hedged_answer_prompt(
+    request: str,
     schema_text: str,
 ) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": LEGAL_DISCLAIMER},
+        {"role": "system", "content": SYSTEM_PREAMBLE},
         {
             "role": "user",
             "content": (
-                "Estimate confidence in the answer below. Be conservative.\n\n"
-                f"Question: {question}\n"
-                f"State: {state}\n"
-                f"Year: {year}\n"
-                f"Answer: {answer}\n"
-                f"Explanation: {explanation}\n\n"
+                "Answer the following user request. If you are not sure what "
+                "the user means, use cautious hedging language but still provide "
+                "an answer. Do NOT ask clarifying questions.\n\n"
+                f"User request: {request}\n\n"
                 f"{schema_text}"
             ),
         },
     ]
 
+
+# ---------------------------------------------------------------------------
+# Generic clarification (for generic_clarify baseline)
+# ---------------------------------------------------------------------------
+
+def generic_clarification_prompt(
+    request: str,
+    schema_text: str,
+) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": SYSTEM_PREAMBLE},
+        {
+            "role": "user",
+            "content": (
+                "Before answering the following user request, generate a "
+                "clarifying question. The question can be generic \u2014 you do not "
+                "need to identify specific ambiguities.\n\n"
+                f"User request: {request}\n\n"
+                f"{schema_text}"
+            ),
+        },
+    ]

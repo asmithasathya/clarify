@@ -1,0 +1,6 @@
+method:
+  name: targeted_clarify
+  description: >
+    Main method. Detect ambiguity, identify specific missing variable,
+    ask targeted clarification or present narrowed interpretation,
+    answer only when the user model is sufficiently resolved.

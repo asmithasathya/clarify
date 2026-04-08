@@ -1,0 +1,5 @@
+method:
+  name: generic_clarify
+  description: >
+    Always ask a generic clarification question regardless of actual ambiguity.
+    Tests whether any clarification helps vs. targeted.

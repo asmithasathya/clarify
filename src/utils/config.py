@@ -57,13 +57,10 @@ def apply_ablation(config: dict[str, Any], ablation_name: str) -> dict[str, Any]
     ablations = updated.setdefault("ablations", {})
 
     mapping = {
-        "no_claim_decomp": ("claim_decomposition", False),
-        "no_query_rewrite": ("query_rewrite", False),
-        "no_reranker": ("reranker", False),
-        "no_second_pass_verification": ("second_pass_verification", False),
-        "no_abstain": ("abstain", False),
-        "retrieval_only_support_scorer": ("support_scorer", "retrieval_only"),
-        "judge_assisted_support_scorer": ("support_scorer", "judge_assisted"),
+        "no_ambiguity_detection": ("ambiguity_detection", False),
+        "no_intent_modeling": ("intent_modeling", False),
+        "no_strategy_selection": ("strategy_selection", False),
+        "no_targeted_question": ("targeted_question", False),
     }
     if ablation_name not in mapping:
         raise ValueError(f"Unsupported ablation: {ablation_name}")

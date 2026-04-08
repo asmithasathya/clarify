@@ -1,6 +1,0 @@
-method:
-  name: rag_direct
-  retrieval: true
-  hedging: false
-  verification: false
-

@@ -1,0 +1,5 @@
+method:
+  name: generic_hedge
+  description: >
+    Detect low confidence and add generic hedging language.
+    No ambiguity detection or clarification.

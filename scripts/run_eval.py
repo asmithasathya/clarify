@@ -15,7 +15,7 @@ def main() -> None:
         "--methods",
         nargs="+",
         required=True,
-        help="Methods to evaluate, e.g. --methods closed_book rag_direct hedge revise_verify",
+        help="Methods to evaluate, e.g. --methods direct_answer generic_hedge generic_clarify targeted_clarify",
     )
     parser.add_argument("--config", default="configs/default.yaml", help="Base config path.")
     parser.add_argument("--limit", type=int, default=None, help="Optional example limit.")

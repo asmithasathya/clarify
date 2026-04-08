@@ -1,4 +1,4 @@
-"""Selective prediction metrics for abstention-aware evaluation."""
+"""Action-level metrics: rates of clarification, answering, and appropriate action."""
 
 from __future__ import annotations
 
@@ -7,64 +7,71 @@ from typing import Sequence
 from src.data.schema import MethodResult
 
 
-def coverage(results: Sequence[MethodResult]) -> float:
+def answer_rate(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples where the method answered directly."""
     if not results:
         return 0.0
-    answered = sum(1 for result in results if not result.abstained)
-    return answered / len(results)
+    return sum(1 for r in results if r.answered_directly) / len(results)
+
+
+def clarification_rate(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples where the method asked a clarification question."""
+    if not results:
+        return 0.0
+    return sum(1 for r in results if r.asked_clarification) / len(results)
 
 
 def abstention_rate(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples where the method abstained."""
     if not results:
         return 0.0
-    return sum(1 for result in results if result.abstained) / len(results)
+    return sum(1 for r in results if r.response_strategy == "abstain") / len(results)
 
 
-def selective_accuracy(results: Sequence[MethodResult]) -> float:
-    answered = [result for result in results if not result.abstained]
-    if not answered:
-        return 0.0
-    return sum(1 for result in answered if result.correct) / len(answered)
+def appropriate_action_rate(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples where the method took the right type of action.
 
-
-def bad_acceptance_proxy(results: Sequence[MethodResult]) -> float:
-    answered = [result for result in results if not result.abstained]
-    if not answered:
-        return 0.0
-    return sum(1 for result in answered if not result.correct) / len(answered)
-
-
-def useful_answer_rate(results: Sequence[MethodResult]) -> float:
+    - If the gold says clarification was needed: asking clarification or
+      presenting alternatives counts as appropriate.
+    - If the gold says clarification was NOT needed: answering directly counts
+      as appropriate.
+    """
     if not results:
         return 0.0
-    return sum(1 for result in results if result.correct and not result.abstained) / len(results)
+    correct = 0
+    for r in results:
+        if r.gold_clarification_needed and r.asked_clarification:
+            correct += 1
+        elif not r.gold_clarification_needed and r.answered_directly:
+            correct += 1
+    return correct / len(results)
 
 
-def risk_coverage_curve(results: Sequence[MethodResult]) -> list[dict[str, float]]:
-    answered = [result for result in results if not result.abstained]
-    if not results or not answered:
-        return []
-    ranked = sorted(answered, key=lambda item: item.confidence, reverse=True)
-    curve: list[dict[str, float]] = []
-    incorrect = 0
-    total = len(results)
-    for idx, result in enumerate(ranked, start=1):
-        if not result.correct:
-            incorrect += 1
-        curve.append(
-            {
-                "coverage": idx / total,
-                "risk": incorrect / idx,
-                "selective_accuracy": 1.0 - (incorrect / idx),
-            }
-        )
-    return curve
+def unnecessary_clarification_rate(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples where clarification was asked but was not needed."""
+    if not results:
+        return 0.0
+    return sum(
+        1 for r in results
+        if r.asked_clarification and not r.gold_clarification_needed
+    ) / len(results)
 
 
-def confusion_matrix(results: Sequence[MethodResult]) -> dict[str, dict[str, int]]:
-    labels = ["Yes", "No", "Abstain"]
-    matrix = {gold: {pred: 0 for pred in labels} for gold in labels}
-    for result in results:
-        matrix[result.gold_answer][result.predicted_answer] += 1
-    return matrix
+def missed_ambiguity_rate(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples where the method answered directly despite ambiguity."""
+    if not results:
+        return 0.0
+    return sum(
+        1 for r in results
+        if r.answered_directly and r.gold_clarification_needed
+    ) / len(results)
 
+
+def wrong_answer_under_ambiguity(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples answered without clarifying AND got wrong."""
+    if not results:
+        return 0.0
+    return sum(
+        1 for r in results
+        if r.answered_directly and r.gold_clarification_needed and not r.correct
+    ) / len(results)

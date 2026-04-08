@@ -1,4 +1,4 @@
-"""Small smoke demo for the revise_verify pipeline."""
+"""Small smoke demo for the targeted clarification pipeline."""
 
 from __future__ import annotations
 
@@ -6,189 +6,142 @@ import json
 
 import typer
 
-from src.data.schema import LegalQAExample, RetrievedPassage
+from src.data.schema import DialogueExample
 from src.llm.generator import MockGenerator
-from src.methods.revise_verify import run_revise_verify
-from src.verify.abstain import AbstentionPolicy
-from src.verify.claim_extraction import ClaimExtractor
-from src.verify.claim_scoring import build_support_scorer
-from src.verify.revise import RevisionEngine
-from src.verify.support_checker import LLMSupportJudge
-from src.retrieval.query_rewrite import AlternativeTrajectoryBuilder
+from src.methods.targeted_clarify import run_targeted_clarify
+from src.understand.ambiguity_detector import AmbiguityDetector
+from src.understand.clarification_generator import ClarificationGenerator
+from src.understand.intent_model import IntentModeler
+from src.understand.strategy_selector import StrategySelector
 
 
 app = typer.Typer(add_completion=False)
 
 
-class TinyRetriever:
-    def __init__(self) -> None:
-        self.initial = [
-            RetrievedPassage(
-                doc_id="CA-001",
-                state="California",
-                citation="CA Civ. Code 1946.1",
-                text="A periodic tenancy may be terminated by written notice served in advance.",
-                dense_score=0.56,
-                rerank_score=0.25,
-                fused_score=0.60,
-                rank=1,
-            ),
-            RetrievedPassage(
-                doc_id="CA-002",
-                state="California",
-                citation="CA Civ. Code 1161",
-                text="A tenant may be subject to unlawful detainer procedures after specified notice requirements are met.",
-                dense_score=0.51,
-                rerank_score=0.12,
-                fused_score=0.54,
-                rank=2,
-            ),
-        ]
-        self.verification = [
-            RetrievedPassage(
-                doc_id="CA-001",
-                state="California",
-                citation="CA Civ. Code 1946.1",
-                text="A landlord must give written notice before terminating a month-to-month tenancy, subject to specified notice periods.",
-                dense_score=0.70,
-                rerank_score=1.10,
-                fused_score=0.88,
-                rank=1,
-            ),
-            RetrievedPassage(
-                doc_id="CA-003",
-                state="California",
-                citation="CA Civ. Proc. Code 1162",
-                text="Notice may be served personally, by substituted service, or by posting and mailing as provided by statute.",
-                dense_score=0.63,
-                rerank_score=0.90,
-                fused_score=0.82,
-                rank=2,
-            ),
-        ]
-
-    def retrieve(self, query: str, *, state: str | None = None, top_k: int | None = None):
-        if "written notice" in query.lower():
-            return self.verification[: top_k or len(self.verification)]
-        return self.initial[: top_k or len(self.initial)]
-
-    def retrieve_multi(self, queries, *, state: str | None = None, top_k: int | None = None, rerank_query: str | None = None):
-        return self.verification[: top_k or len(self.verification)]
-
-
 def _demo_responder(messages):
+    """Mock responder that returns canned JSON for each pipeline stage."""
     prompt = messages[-1]["content"]
-    if "Extract 2-5 atomic support claims" in prompt:
-        return json.dumps(
-            {
-                "claims": [
-                    {
-                        "claim_text": "California requires written notice before terminating a periodic tenancy.",
-                        "claim_type": "procedural",
-                        "importance_score": 0.95,
-                        "span_text_from_original_explanation": "California requires written notice before termination.",
-                    },
-                    {
-                        "claim_text": "The answer depends on the tenancy type and statutory notice period.",
-                        "claim_type": "rule",
-                        "importance_score": 0.65,
-                        "span_text_from_original_explanation": "The rule depends on the tenancy type and notice period.",
-                    },
-                ]
-            }
-        )
-    if "Rewrite the search query" in prompt:
-        return json.dumps(
-            {
-                "rewritten_query": "California housing law 2021 written notice terminate month-to-month tenancy",
-                "justification": "Targets the specific statutory notice rule for termination.",
-            }
-        )
-    if "Create a compact legal search plan" in prompt:
-        return json.dumps(
-            {
-                "steps": [
-                    {"query": "California housing law 2021 written notice termination rule", "purpose": "rule"},
-                    {"query": "California housing law 2021 exceptions to written notice termination", "purpose": "exception"},
-                    {"query": "California housing law 2021 definition of service of notice", "purpose": "definition"},
-                ]
-            }
-        )
-    if "Revise the answer minimally" in prompt:
-        return json.dumps(
-            {
-                "answer": "No",
-                "explanation": "No. For California housing law as of 2021, a landlord generally must provide written notice before terminating a periodic tenancy, and the exact notice period depends on the tenancy details.",
-                "cited_statute_ids": ["CA-001", "CA-003"],
-                "citations": ["CA Civ. Code 1946.1", "CA Civ. Proc. Code 1162"],
-                "confidence": 0.82,
-                "confidence_bucket": "high",
-                "revision_notes": "Strengthened the notice requirement and narrowed the explanation to periodic tenancies.",
-            }
-        )
-    return json.dumps(
-        {
-            "answer": "No",
-            "explanation": "No. California generally requires written notice before termination, although the initial explanation is brief.",
-            "cited_statute_ids": ["CA-001"],
-            "citations": ["CA Civ. Code 1946.1"],
-            "confidence": 0.58,
-            "confidence_bucket": "medium",
-        }
-    )
+
+    if "ambiguous or underspecified" in prompt:
+        return json.dumps({
+            "is_ambiguous": True,
+            "ambiguity_type": "missing_context",
+            "missing_variables": [
+                {
+                    "variable": "what kind of investment advice",
+                    "why_missing": "The user could mean stocks, real estate, retirement planning, or crypto.",
+                    "importance": 0.9,
+                },
+                {
+                    "variable": "risk tolerance",
+                    "why_missing": "Investment advice varies dramatically by risk tolerance.",
+                    "importance": 0.7,
+                },
+            ],
+            "confidence": 0.85,
+            "rationale": "The request 'help me invest' is severely underspecified.",
+        })
+
+    if "plausible interpretations" in prompt or "2-4 plausible" in prompt:
+        return json.dumps({
+            "interpretations": [
+                {
+                    "description": "User wants to start investing in index funds for retirement",
+                    "assumed_context": "Young professional, long time horizon, moderate risk tolerance",
+                    "plausibility": 0.4,
+                },
+                {
+                    "description": "User wants advice on investing a windfall in real estate",
+                    "assumed_context": "Has received a large sum, interested in property",
+                    "plausibility": 0.3,
+                },
+                {
+                    "description": "User wants to learn about day-trading stocks",
+                    "assumed_context": "Interested in active trading, higher risk tolerance",
+                    "plausibility": 0.2,
+                },
+            ],
+            "most_likely_index": 0,
+            "entropy_estimate": "high",
+            "gap_description": "Type of investment and risk tolerance are both unknown.",
+        })
+
+    if "best response strategy" in prompt or "Choose the best" in prompt:
+        return json.dumps({
+            "strategy": "ask_clarification",
+            "rationale": "Two critical variables (investment type, risk tolerance) are missing. A targeted question is best.",
+            "confidence": 0.82,
+        })
+
+    if "targeted clarifying question" in prompt:
+        return json.dumps({
+            "question": "Are you looking to invest for long-term goals like retirement, or are you interested in shorter-term opportunities? Also, how comfortable are you with the possibility of losing some of your investment?",
+            "target_variable": "what kind of investment advice",
+            "why_this_helps": "This resolves both the investment type and risk tolerance in one natural question.",
+        })
+
+    # Fallback: direct answer
+    return json.dumps({
+        "answer": "I'd recommend starting with a diversified index fund.",
+        "assumed_interpretation": "General investment advice for a beginner",
+        "confidence": 0.4,
+        "caveats": "This is very generic without knowing your situation.",
+    })
 
 
 @app.command()
 def main() -> None:
-    typer.echo("Research demo only. This repository targets housing law as of 2021 and is not legal advice.")
+    typer.echo("=== Clarify Demo ===")
+    typer.echo("Demonstrates the targeted clarification pipeline with a mock generator.\n")
+
     config = {
-        "project": {"year": 2021, "seed": 42},
-        "retrieval": {"top_k": 2},
-        "verify": {
-            "support_threshold": 0.62,
-            "narrow_threshold": 0.48,
-            "retrieval_weight": 0.7,
-            "lexical_weight": 0.2,
-            "gold_weight": 0.1,
-            "min_claims": 2,
-            "max_claims": 5,
-            "use_search_plan": True,
-            "use_multi_query_fusion": True,
-        },
+        "project": {"seed": 42},
+        "understand": {"ambiguity_threshold": 0.5},
         "ablations": {
-            "claim_decomposition": True,
-            "query_rewrite": True,
-            "second_pass_verification": True,
-            "abstain": True,
-            "support_scorer": "retrieval_only",
+            "ambiguity_detection": True,
+            "intent_modeling": True,
+            "strategy_selection": True,
+            "targeted_question": True,
         },
         "generation": {"json_max_retries": 0},
     }
-    example = LegalQAExample(
+
+    example = DialogueExample(
         example_id="demo-001",
-        question="Can my landlord terminate my month-to-month tenancy in California without written notice?",
-        answer="No",
-        state="California",
-        statutes=["CA-001", "CA Civ. Code 1946.1"],
-        citation=["CA Civ. Code 1946.1"],
-        excerpt=[],
+        user_request="Help me invest my money",
+        hidden_context="User is a 28-year-old teacher who just inherited $50k and wants safe, long-term growth for a house down payment in 5 years.",
+        gold_clarification_needed=True,
+        gold_answer="Consider a mix of high-yield savings and conservative index funds given your 5-year timeline and need for capital preservation.",
+        ambiguity_type="missing_context",
+        domain="personal finance",
+        checklist=[
+            "Did the assistant ask about the investment timeline?",
+            "Did the assistant ask about risk tolerance?",
+            "Did the assistant ask about the investment amount?",
+            "Did the assistant ask about specific goals?",
+        ],
     )
+
     generator = MockGenerator(responder=_demo_responder, config=config)
-    retriever = TinyRetriever()
-    judge = LLMSupportJudge(config, generator=None)
-    support_scorer = build_support_scorer(config, judge=judge)
-    result = run_revise_verify(
+
+    result = run_targeted_clarify(
         example,
-        generator=generator,
-        retriever=retriever,
         config=config,
-        claim_extractor=ClaimExtractor(config, generator=generator),
-        support_scorer=support_scorer,
-        trajectory_builder=AlternativeTrajectoryBuilder(config, generator=generator),
-        revision_engine=RevisionEngine(config, generator=generator),
-        abstention_policy=AbstentionPolicy(config, generator=None),
+        ambiguity_detector=AmbiguityDetector(config, generator=generator),
+        intent_modeler=IntentModeler(config, generator=generator),
+        strategy_selector=StrategySelector(config, generator=generator),
+        clarification_generator=ClarificationGenerator(config, generator=generator),
     )
-    typer.echo(result.model_dump_json(indent=2))
+
+    typer.echo(f"User request: {example.user_request}")
+    typer.echo(f"Hidden context: {example.hidden_context}")
+    typer.echo(f"\nStrategy chosen: {result.response_strategy}")
+    typer.echo(f"Response: {result.response_text}")
+    typer.echo(f"\nAmbiguity detected: {result.is_ambiguous_detected}")
+    typer.echo(f"Asked clarification: {result.asked_clarification}")
+    typer.echo(f"Missing variables: {result.num_missing_variables}")
+    typer.echo(f"\nFull trace:")
+    typer.echo(json.dumps(result.trace, indent=2, default=str))
 
 
 if __name__ == "__main__":

@@ -4,126 +4,78 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
-BinaryAnswer = Literal["Yes", "No", "Abstain"]
-ConfidenceBucket = Literal["low", "medium", "high"]
-ClaimType = Literal["rule", "exception", "procedural", "factual"]
+AmbiguityType = Literal["lexical", "referential", "underspecified", "missing_context"]
+ResponseStrategy = Literal[
+    "answer_directly",
+    "ask_clarification",
+    "narrow_and_answer",
+    "present_alternatives",
+    "abstain",
+]
 
 
-def normalize_answer_label(value: str | None) -> BinaryAnswer:
-    if value is None:
-        return "Abstain"
-    cleaned = value.strip().lower()
-    if cleaned.startswith("y"):
-        return "Yes"
-    if cleaned.startswith("n"):
-        return "No"
-    return "Abstain"
+class DialogueExample(BaseModel):
+    """A single evaluation instance: an ambiguous user request with hidden context."""
 
-
-def confidence_bucket(score: float) -> ConfidenceBucket:
-    if score >= 0.75:
-        return "high"
-    if score >= 0.4:
-        return "medium"
-    return "low"
-
-
-class LegalQAExample(BaseModel):
     example_id: str
-    question: str
-    answer: BinaryAnswer
-    state: str
-    statutes: list[str] = Field(default_factory=list)
-    citation: list[str] = Field(default_factory=list)
-    excerpt: list[str] = Field(default_factory=list)
-    year: int = 2021
-    dataset_name: str = "housingqa"
+    user_request: str
+    hidden_context: str
+    gold_clarification_needed: bool
+    gold_clarifying_question: str | None = None
+    gold_answer: str | None = None
+    ambiguity_type: AmbiguityType = "underspecified"
+    domain: str = "general"
+    checklist: list[str] = Field(default_factory=list)
+    personas: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class StatutePassage(BaseModel):
-    doc_id: str
-    text: str
-    state: str | None = None
-    citation: str | None = None
-    title: str | None = None
-    source_dataset: str = "housingqa_statutes"
-    metadata: dict[str, Any] = Field(default_factory=dict)
+class AmbiguityRecord(BaseModel):
+    """One detected ambiguity in a user request."""
 
-    @property
-    def searchable_text(self) -> str:
-        chunks = [self.state or "", self.citation or "", self.title or "", self.text]
-        return " ".join(chunk for chunk in chunks if chunk).strip()
+    ambiguity_type: AmbiguityType
+    missing_variable: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    source_span: str | None = None
 
 
-class RetrievedPassage(BaseModel):
-    doc_id: str
-    text: str
-    state: str | None = None
-    citation: str | None = None
-    dense_score: float | None = None
-    rerank_score: float | None = None
-    fused_score: float | None = None
-    rank: int = 0
+class Interpretation(BaseModel):
+    """A candidate interpretation of an ambiguous request."""
 
-
-class ClaimRecord(BaseModel):
-    claim_text: str
-    claim_type: ClaimType
-    importance_score: float = Field(ge=0.0, le=1.0)
-    span_text_from_original_explanation: str
-
-
-class ClaimSupportScore(BaseModel):
-    claim: ClaimRecord
-    retrieval_score: float = Field(ge=0.0, le=1.0)
-    lexical_overlap_score: float = Field(ge=0.0, le=1.0)
-    gold_match_score: float = Field(ge=0.0, le=1.0)
-    judge_score: float | None = Field(default=None, ge=0.0, le=1.0)
-    final_score: float = Field(ge=0.0, le=1.0)
-    supported: bool
-    evidence: list[RetrievedPassage] = Field(default_factory=list)
-    rationale: str | None = None
+    description: str
+    plausibility: float = Field(ge=0.0, le=1.0)
+    assumed_context: str
 
 
 class MethodResult(BaseModel):
+    """Result of running one method on one example."""
+
     example_id: str
     method: str
-    question: str
-    gold_answer: BinaryAnswer
-    predicted_answer: BinaryAnswer
-    explanation: str
-    state: str
-    confidence: float = Field(ge=0.0, le=1.0)
-    confidence_bucket: ConfidenceBucket
-    citations: list[str] = Field(default_factory=list)
-    statute_ids: list[str] = Field(default_factory=list)
-    abstained: bool = False
-    narrowed: bool = False
+    user_request: str
+    hidden_context: str
+    gold_clarification_needed: bool
+    gold_answer: str | None = None
+
+    # What the method produced
+    response_strategy: ResponseStrategy
+    response_text: str
+    clarification_question: str | None = None
+    assumed_interpretation: str | None = None
+    final_answer: str | None = None
+
+    # Assessment
+    is_ambiguous_detected: bool = False
+    confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    num_missing_variables: int = 0
+
+    # Evaluation flags (filled in by eval)
+    asked_clarification: bool = False
+    answered_directly: bool = False
     correct: bool = False
-    support_score: float | None = Field(default=None, ge=0.0, le=1.0)
-    retrieved_passages: list[RetrievedPassage] = Field(default_factory=list)
-    claim_scores: list[ClaimSupportScore] = Field(default_factory=list)
+
+    # Full trace for debugging
     trace: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("predicted_answer", mode="before")
-    @classmethod
-    def _normalize_predicted_answer(cls, value: str | BinaryAnswer) -> BinaryAnswer:
-        return normalize_answer_label(value)
-
-    @field_validator("gold_answer", mode="before")
-    @classmethod
-    def _normalize_gold_answer(cls, value: str | BinaryAnswer) -> BinaryAnswer:
-        return normalize_answer_label(value)
-
-
-class AbstentionDecision(BaseModel):
-    predicted_answer: BinaryAnswer
-    explanation: str
-    narrowed: bool = False
-    abstained: bool = False
-    requested_verification: str | None = None
-

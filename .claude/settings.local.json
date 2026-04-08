@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(curl -s \"https://huggingface.co/api/datasets?search=ProMISe+dialogue&limit=10\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(f''''{i[id]} - {i.get\\(description,\\)[:200]}''''\\) for i in data]\")",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=promise+proactive+dialogue+dataset\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); [print\\(f''''{i[full_name]} - {i[html_url]} - {i.get\\(description,\\)}''''\\) for i in data.get\\(''''items'''',[]\\)]\")",
+      "WebFetch(domain:aclanthology.org)",
+      "WebFetch(domain:arxiv.org)",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=amazon-science+promise\")",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -s \"https://api.github.com/search/repositories?q=org:amazon-science+promise\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(''''total:'''', data.get\\(''''total_count''''\\)\\); [print\\(f''''{i[full_name]} - {i[html_url]}''''\\) for i in data.get\\(''''items'''',[]\\)]\")",
+      "Bash(curl -sL \"https://huggingface.co/datasets/bryanlincoln/infoquest/resolve/main/chats-gemini_2_0_flash_001-gpt_4o-AtlaAI_Selene_1_Mini_Llama_3_1_8B-0.jsonl\")",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python scripts/demo_example.py)",
+      "Bash(pip install:*)",
+      "Bash(python -m scripts.demo_example)"
+    ]
+  }
+}
