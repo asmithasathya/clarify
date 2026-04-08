@@ -2,56 +2,92 @@
 
 Research repository for studying when and how an assistant should clarify ambiguous user requests instead of answering prematurely.
 
-## Core thesis
+## Overview
 
-> A socially intelligent assistant should know when it does not yet understand the user well enough to answer. We study whether targeted clarification and interpretation revision outperform premature answering and generic hedging in ambiguous help-seeking dialogue.
+The repository has already been pivoted from legal QA verification to ambiguity-aware clarification. The central question is whether an assistant should:
 
-The object of uncertainty is **the assistant's understanding of the user**, not factual correctness. When a request is underspecified, the system should detect what is missing, model candidate interpretations, and choose whether to ask a targeted clarifying question, narrow the interpretation explicitly, or answer directly.
+1. answer immediately,
+2. answer with hedging,
+3. ask a generic clarification question, or
+4. detect the specific ambiguity and respond with a targeted strategy.
 
-## Pipeline
+The object of uncertainty here is the assistant's understanding of the user, not factual support from retrieved evidence.
 
-```
+## Current Pipeline
+
+```text
 User request
-  → Ambiguity detection (is this underspecified?)
-  → Intent modeling (what could the user mean?)
-  → Strategy selection (clarify / narrow / answer / present alternatives / abstain)
-  → Response generation (targeted question, narrowed answer, or direct answer)
+  -> ambiguity detection
+  -> intent modeling
+  -> strategy selection
+  -> one of:
+       - direct answer
+       - targeted clarification question
+       - narrowed answer under an explicit assumption
+       - alternatives presentation
+       - abstention
 ```
 
-## Implemented methods
+The current implementation is single-turn. The system does not yet consume a follow-up user answer and continue the dialogue.
 
-The repository implements four assistant conditions:
+## Implemented Methods
 
-1. **`direct_answer`** — Answer immediately with no ambiguity checking. Baseline.
-2. **`generic_hedge`** — Answer with hedging language when confidence is low. No clarification.
-3. **`generic_clarify`** — Always ask a generic clarification question regardless of actual ambiguity.
-4. **`targeted_clarify`** — Main method. Detect ambiguity, identify the specific missing variable, choose the best strategy, and act accordingly.
+- `direct_answer`: answer immediately with no ambiguity handling.
+- `generic_hedge`: answer directly with hedging language.
+- `generic_clarify`: always ask a generic clarification question.
+- `targeted_clarify`: detect ambiguity, model interpretations, choose a strategy, and act.
 
-## Primary dataset
+## Data and Schemas
 
-[InfoQuest](https://huggingface.co/datasets/bryanlincoln/infoquest) — open-ended requests with hidden context, where models should ask clarifying questions before answering.
+The primary dataset is [InfoQuest](https://huggingface.co/datasets/bryanlincoln/infoquest). Each example is normalized into `DialogueExample`, which stores:
 
-Each seed message is intentionally ambiguous, with two plausible settings (goal, obstacle, constraints) that the assistant must discover through clarification.
+- the visible user request,
+- hidden context,
+- whether clarification is needed,
+- an optional gold answer,
+- ambiguity metadata,
+- checklist and persona fields when available.
 
-## Model stack
+The main runtime output is `MethodResult`, which records:
 
-- Generator: `Qwen/Qwen2.5-7B-Instruct`
-- Default backend: vLLM (fallback: Transformers)
-- Structured output via Pydantic schemas with JSON retry
+- the chosen response strategy,
+- the emitted response text,
+- whether the method answered directly,
+- whether it actually asked a clarification question,
+- ambiguity-detection signals,
+- evaluation flags and trace metadata.
 
-## Evaluation metrics
+## Evaluation
 
-- **appropriate_action_rate** — answered when clear + clarified when ambiguous
-- **clarification_precision** — when asked, was clarification actually needed?
-- **clarification_recall** — of ambiguous cases, how often did the method clarify?
-- **missed_ambiguity_rate** — answered directly when it should have clarified
-- **unnecessary_clarification_rate** — asked when it didn't need to
-- **task_success_rate** — final answer correctness
-- **ambiguity_detection_accuracy** — detector agreement with gold labels
+Current aggregate metrics:
+
+- `task_success_rate`
+- `appropriate_action_rate`
+- `clarification_rate`
+- `answer_rate`
+- `abstention_rate`
+- `clarification_precision`
+- `clarification_recall`
+- `ambiguity_detection_accuracy`
+- `unnecessary_clarification_rate`
+- `missed_ambiguity_rate`
+- `wrong_answer_under_ambiguity`
+- `strategy_distribution`
+
+Current correctness is an offline proxy computed during evaluation in `src/eval/runner.py`:
+
+- Final answers are scored with normalized text overlap against `gold_answer`.
+- Clarification questions use `gold_clarifying_question` when available.
+- If no gold clarification question exists, asking for clarification is treated as correct when `gold_clarification_needed` is true.
+- `present_alternatives` is currently treated as an appropriate ambiguity-handling action and gets a proxy correctness signal when clarification is needed.
+
+This is intentionally lightweight and should be treated as approximate open-ended evaluation, not a final benchmark design.
 
 ## Installation
 
 Python 3.10+ is required.
+
+Base install:
 
 ```bash
 python -m venv .venv
@@ -59,39 +95,40 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-For vLLM:
+Optional installs:
 
 ```bash
 pip install -e ".[dev,vllm]"
+pip install -e ".[dev,vllm,peft]"
 ```
 
 ## Quickstart
 
-1. Run the smoke demo (mock generator, no GPU needed):
+Smoke demo with a mock generator:
 
 ```bash
 python -m scripts.demo_example
 ```
 
-2. Download InfoQuest locally (optional):
+Download InfoQuest locally to JSONL:
 
 ```bash
 python -m scripts.download_infoquest
 ```
 
-3. Run one method:
+Run one method:
 
 ```bash
 python scripts/run_inference.py --method targeted_clarify --limit 100
 ```
 
-4. Run multi-method evaluation:
+Run full evaluation:
 
 ```bash
 python scripts/run_eval.py --methods direct_answer generic_hedge generic_clarify targeted_clarify
 ```
 
-5. Run ablations:
+Run ablations for `targeted_clarify`:
 
 ```bash
 python scripts/run_ablation.py \
@@ -101,50 +138,96 @@ python scripts/run_ablation.py \
   --ablation no_targeted_question
 ```
 
-For non-vLLM environments:
+Switch to the Transformers backend:
 
 ```bash
---backend transformers
+python scripts/run_eval.py --methods targeted_clarify --backend transformers
 ```
 
-## Repository layout
+Make targets:
 
-```
-clarify/
-  README.md
-  pyproject.toml
-  Makefile
-  configs/
-    default.yaml
-    model/qwen25_7b.yaml
-    method/{direct_answer,generic_hedge,generic_clarify,targeted_clarify}.yaml
-  src/
-    data/           # DialogueExample schema, InfoQuest loader
-    llm/            # Generator backends, prompts, output schemas
-    understand/     # Ambiguity detector, intent modeler, strategy selector, clarification generator
-    methods/        # Four experimental conditions
-    eval/           # Metrics and experiment runner
-    utils/          # Config, I/O, logging, seeding
-  scripts/          # CLI entry points
-  tests/            # Pytest suite
-  data/             # Cached datasets
-  outputs/          # Experiment artifacts
+```bash
+make install-dev
+make download
+make demo
+make eval
 ```
 
 ## Configuration
 
-YAML-based configs under `configs/`. The loader merges includes from `default.yaml` with method-specific overrides.
+`configs/default.yaml` currently includes:
 
-Key ablation flags in `configs/default.yaml`:
+- `configs/model/qwen25_7b.yaml`
+- `configs/method/targeted_clarify.yaml`
 
-- `ambiguity_detection` — disable to skip detection (always answer)
-- `intent_modeling` — disable to skip interpretation ranking
-- `strategy_selection` — disable to use binary clarify/answer
-- `targeted_question` — disable to use generic questions when clarifying
+Key defaults:
 
-## Limitations
+- dataset: `infoquest`
+- generation temperature: `0.0`
+- backend defaults come from the model config
+- ambiguity threshold: `0.5`
+- max clarification turns: `1`
 
-- Single-turn evaluation only (no multi-turn dialogue simulation yet)
-- Evaluation of answer quality for open-ended responses is approximate
-- Full model inference requires a GPU-friendly environment
-- ProMISe dataset adapter is planned but not yet implemented (repo is unavailable)
+Current ablation flags:
+
+- `ambiguity_detection`
+- `intent_modeling`
+- `strategy_selection`
+- `targeted_question`
+
+## Outputs
+
+`run_eval.py` and `run_ablation.py` write timestamped or user-specified directories under `outputs/`.
+
+Per-method outputs currently include:
+
+- `predictions.jsonl`
+- `metrics.json`
+- `summary.csv`
+- `report_snippet.md`
+
+Cross-method evaluation writes:
+
+- `comparison_report.md`
+- `all_metrics.json`
+- `all_metrics.csv`
+- `resolved_config.json`
+
+Single-method inference writes outputs under `outputs/<method>/` by default, and `run_method()` creates a nested method directory inside the selected output root.
+
+## Repository Layout
+
+```text
+clarify/
+  README.md
+  TODO_PLAN.md
+  Makefile
+  pyproject.toml
+  configs/
+    default.yaml
+    model/
+    method/
+  scripts/
+    demo_example.py
+    download_infoquest.py
+    run_ablation.py
+    run_eval.py
+    run_inference.py
+  src/
+    data/
+    eval/
+    llm/
+    methods/
+    understand/
+    utils/
+  tests/
+```
+
+## Current Limitations
+
+- Single-turn evaluation only.
+- No live follow-up clarification loop yet.
+- Open-ended correctness is based on a simple overlap proxy.
+- No ProMISe adapter is implemented.
+- `targeted_clarify` supports `present_alternatives`, but the evaluation still treats it with a coarse proxy rather than a dedicated metric.
+- Running the real model stack requires a Python 3.10+ environment with the appropriate optional dependencies installed.
