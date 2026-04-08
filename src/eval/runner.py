@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Sequence
@@ -98,6 +99,74 @@ def _flatten_metrics(prefix: str, metrics: dict[str, Any]) -> dict[str, Any]:
     return flat
 
 
+def _normalize_text(text: str | None) -> str:
+    if not text:
+        return ""
+    return " ".join(re.findall(r"[A-Za-z0-9]+", text.lower()))
+
+
+def _text_matches(
+    predicted: str | None,
+    gold: str | None,
+    *,
+    overlap_threshold: float = 0.6,
+) -> bool:
+    predicted_norm = _normalize_text(predicted)
+    gold_norm = _normalize_text(gold)
+    if not predicted_norm or not gold_norm:
+        return False
+    if predicted_norm == gold_norm or predicted_norm in gold_norm or gold_norm in predicted_norm:
+        return True
+
+    predicted_tokens = set(predicted_norm.split())
+    gold_tokens = set(gold_norm.split())
+    if not predicted_tokens or not gold_tokens:
+        return False
+
+    recall = len(predicted_tokens & gold_tokens) / len(gold_tokens)
+    return recall >= overlap_threshold
+
+
+def _evaluate_result(
+    result: MethodResult,
+    example: DialogueExample,
+    config: dict[str, Any],
+) -> MethodResult:
+    """Populate single-turn correctness signals before metric aggregation."""
+    overlap_threshold = config.get("evaluation", {}).get("answer_match_threshold", 0.6)
+    evaluation: dict[str, Any] = {"overlap_threshold": overlap_threshold}
+
+    if result.final_answer:
+        result.correct = _text_matches(
+            result.final_answer,
+            example.gold_answer,
+            overlap_threshold=overlap_threshold,
+        )
+        evaluation["mode"] = "answer_match"
+        evaluation["matched_text"] = result.correct
+    elif result.clarification_question:
+        if example.gold_clarifying_question:
+            result.correct = _text_matches(
+                result.clarification_question,
+                example.gold_clarifying_question,
+                overlap_threshold=overlap_threshold,
+            )
+            evaluation["mode"] = "clarification_match"
+            evaluation["matched_text"] = result.correct
+        else:
+            result.correct = example.gold_clarification_needed
+            evaluation["mode"] = "clarification_proxy"
+    elif result.response_strategy == "present_alternatives":
+        result.correct = example.gold_clarification_needed and bool(result.response_text.strip())
+        evaluation["mode"] = "alternatives_proxy"
+    else:
+        result.correct = False
+        evaluation["mode"] = "no_final_answer"
+
+    result.trace["evaluation"] = evaluation
+    return result
+
+
 def _write_method_outputs(
     method_name: str,
     results: Sequence[MethodResult],
@@ -157,7 +226,7 @@ def run_method(
         else:
             raise ValueError(f"Unsupported method: {method_name}")
 
-        results.append(result)
+        results.append(_evaluate_result(result, example, config))
 
     metrics = compute_all_metrics(results)
     _write_method_outputs(method_name, results, metrics, output_dir)

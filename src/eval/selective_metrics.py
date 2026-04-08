@@ -40,7 +40,10 @@ def appropriate_action_rate(results: Sequence[MethodResult]) -> float:
         return 0.0
     correct = 0
     for r in results:
-        if r.gold_clarification_needed and r.asked_clarification:
+        if r.gold_clarification_needed and r.response_strategy in {
+            "ask_clarification",
+            "present_alternatives",
+        }:
             correct += 1
         elif not r.gold_clarification_needed and r.answered_directly:
             correct += 1
