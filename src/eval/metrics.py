@@ -10,7 +10,9 @@ from src.eval.selective_metrics import (
     answer_rate,
     appropriate_action_rate,
     clarification_rate,
+    final_answer_rate,
     missed_ambiguity_rate,
+    multi_turn_completion_rate,
     unnecessary_clarification_rate,
     wrong_answer_under_ambiguity,
 )
@@ -58,6 +60,37 @@ def strategy_distribution(results: Sequence[MethodResult]) -> dict[str, int]:
     return dist
 
 
+def average_score(results: Sequence[MethodResult], attr: str) -> float:
+    values = [getattr(r, attr) for r in results if getattr(r, attr) is not None]
+    if not values:
+        return 0.0
+    return sum(values) / len(values)
+
+
+def intent_stability_rate(results: Sequence[MethodResult]) -> float:
+    if not results:
+        return 0.0
+    return sum(1 for r in results if (r.intent_confidence or 0.0) >= 0.8) / len(results)
+
+
+def resample_rate(results: Sequence[MethodResult]) -> float:
+    if not results:
+        return 0.0
+    return sum(1 for r in results if r.resample_rounds > 0) / len(results)
+
+
+def clarification_after_resampling_rate(results: Sequence[MethodResult]) -> float:
+    if not results:
+        return 0.0
+    return sum(1 for r in results if r.asked_clarification and r.resample_rounds > 0) / len(results)
+
+
+def resolved_without_clarification_rate(results: Sequence[MethodResult]) -> float:
+    if not results:
+        return 0.0
+    return sum(1 for r in results if not r.asked_clarification and (r.final_answer or r.response_strategy != "abstain")) / len(results)
+
+
 def compute_all_metrics(results: Sequence[MethodResult]) -> dict[str, object]:
     """Compute all evaluation metrics for a set of method results."""
     return {
@@ -65,6 +98,7 @@ def compute_all_metrics(results: Sequence[MethodResult]) -> dict[str, object]:
         "appropriate_action_rate": appropriate_action_rate(results),
         "clarification_rate": clarification_rate(results),
         "answer_rate": answer_rate(results),
+        "final_answer_rate": final_answer_rate(results),
         "abstention_rate": abstention_rate(results),
         "clarification_precision": clarification_precision(results),
         "clarification_recall": clarification_recall(results),
@@ -72,6 +106,19 @@ def compute_all_metrics(results: Sequence[MethodResult]) -> dict[str, object]:
         "unnecessary_clarification_rate": unnecessary_clarification_rate(results),
         "missed_ambiguity_rate": missed_ambiguity_rate(results),
         "wrong_answer_under_ambiguity": wrong_answer_under_ambiguity(results),
+        "multi_turn_completion_rate": multi_turn_completion_rate(results),
+        "average_answer_score": average_score(results, "answer_score"),
+        "average_clarification_quality": average_score(results, "clarification_quality_score"),
+        "average_alternatives_quality": average_score(results, "alternatives_quality_score"),
+        "mean_intent_confidence": average_score(results, "intent_confidence"),
+        "intent_stability_rate": intent_stability_rate(results),
+        "resample_rate": resample_rate(results),
+        "avg_resample_rounds": average_score(results, "resample_rounds"),
+        "clarification_after_resampling_rate": clarification_after_resampling_rate(results),
+        "resolved_without_clarification_rate": resolved_without_clarification_rate(results),
+        "avg_task_model_calls": average_score(results, "task_model_calls"),
+        "avg_latency": average_score(results, "latency_seconds"),
+        "avg_estimated_cost": average_score(results, "estimated_cost"),
         "strategy_distribution": strategy_distribution(results),
         "n_examples": len(results),
     }

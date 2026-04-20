@@ -42,6 +42,30 @@ class IntentModelSchema(BaseModel):
     gap_description: str
 
 
+class IntentSampleBundleSchema(BaseModel):
+    stage_name: Literal["ambiguity_detection", "intent_modeling", "strategy_selection", "clarification_target"]
+    raw_confidence: float = Field(ge=0.0, le=1.0)
+    sample_size: int = Field(ge=1)
+    agreement: float = Field(ge=0.0, le=1.0)
+    dominant_label: str
+    supporting_labels: list[str] = Field(default_factory=list)
+
+
+class IntentWeakPointSchema(BaseModel):
+    stage_name: Literal["ambiguity_detection", "intent_modeling", "strategy_selection", "clarification_target"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason: str
+
+
+class IntentStabilityReportSchema(BaseModel):
+    overall_confidence: float = Field(ge=0.0, le=1.0)
+    confidence_band: Literal["low", "medium", "high"]
+    uncertainty_explanation: str
+    stage_reports: list[IntentSampleBundleSchema] = Field(default_factory=list)
+    weak_points: list[IntentWeakPointSchema] = Field(default_factory=list)
+    should_clarify: bool = False
+
+
 # ---------------------------------------------------------------------------
 # Strategy selection
 # ---------------------------------------------------------------------------
@@ -79,6 +103,11 @@ class AnswerSchema(BaseModel):
     caveats: str | None = None
 
 
+class UserReplySchema(BaseModel):
+    user_reply: str
+    grounded_in_hidden_context: bool = True
+
+
 # ---------------------------------------------------------------------------
 # Narrowed answer (answer under explicit assumptions)
 # ---------------------------------------------------------------------------
@@ -112,3 +141,22 @@ class HedgedAnswerSchema(BaseModel):
     answer: str
     hedge_reason: str
     confidence: float = Field(ge=0.0, le=1.0)
+
+
+class AnswerEvaluationSchema(BaseModel):
+    is_correct: bool
+    score: float = Field(ge=0.0, le=1.0)
+    rationale: str
+
+
+class ClarificationEvaluationSchema(BaseModel):
+    is_targeted: bool
+    score: float = Field(ge=0.0, le=1.0)
+    missing_variable: str
+    rationale: str
+
+
+class AlternativesEvaluationSchema(BaseModel):
+    is_useful: bool
+    score: float = Field(ge=0.0, le=1.0)
+    rationale: str

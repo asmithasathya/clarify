@@ -33,16 +33,24 @@ def resolve_repo_path(path: str | Path) -> Path:
     return REPO_ROOT / path_obj
 
 
-def load_config(path: str | Path, method_name: str | None = None) -> dict[str, Any]:
+def _load_config_tree(path: str | Path, seen: set[Path] | None = None) -> dict[str, Any]:
     config_path = resolve_repo_path(path)
+    seen = seen or set()
+    if config_path in seen:
+        raise ValueError(f"Recursive config include detected at: {config_path}")
+    seen.add(config_path)
+
     raw = read_yaml(config_path)
     merged: dict[str, Any] = {}
-
     for include in raw.get("includes", []):
         include_path = resolve_repo_path(include)
-        merged = deep_merge(merged, read_yaml(include_path))
-
+        merged = deep_merge(merged, _load_config_tree(include_path, seen=set(seen)))
     merged = deep_merge(merged, {k: v for k, v in raw.items() if k != "includes"})
+    return merged
+
+
+def load_config(path: str | Path, method_name: str | None = None) -> dict[str, Any]:
+    merged = _load_config_tree(path)
 
     if method_name:
         method_path = REPO_ROOT / "configs" / "method" / f"{method_name}.yaml"
@@ -61,6 +69,17 @@ def apply_ablation(config: dict[str, Any], ablation_name: str) -> dict[str, Any]
         "no_intent_modeling": ("intent_modeling", False),
         "no_strategy_selection": ("strategy_selection", False),
         "no_targeted_question": ("targeted_question", False),
+        "heuristic_ambiguity_detection": ("heuristic_ambiguity_detection", True),
+        "heuristic_intent_modeling": ("heuristic_intent_modeling", True),
+        "heuristic_strategy_selection": ("heuristic_strategy_selection", True),
+        "single_sample_only": ("single_sample_only", True),
+        "no_selective_resample": ("no_selective_resample", True),
+        "resample_all_stages": ("resample_all_stages", True),
+        "one_round_only": ("one_round_only", True),
+        "clarify_immediately": ("clarify_immediately", True),
+        "no_clarification_fallback": ("no_clarification_fallback", True),
+        "no_calibration": ("no_calibration", True),
+        "generic_question_fallback": ("generic_question_fallback", True),
     }
     if ablation_name not in mapping:
         raise ValueError(f"Unsupported ablation: {ablation_name}")
@@ -68,4 +87,3 @@ def apply_ablation(config: dict[str, Any], ablation_name: str) -> dict[str, Any]
     key, value = mapping[ablation_name]
     ablations[key] = value
     return updated
-

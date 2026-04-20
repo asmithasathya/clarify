@@ -8,6 +8,10 @@ from src.data.schema import ResponseStrategy
 from src.llm.generator import BaseGenerator
 from src.llm.prompts import schema_instruction, strategy_selection_prompt
 from src.llm.schemas import AmbiguityAssessmentSchema, IntentModelSchema, StrategyDecisionSchema
+from src.utils.logging import get_logger
+
+
+LOGGER = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +71,8 @@ class StrategySelector:
         request: str,
         assessment: AmbiguityAssessmentSchema,
         intent_model: IntentModelSchema,
+        *,
+        temperature: float | None = None,
     ) -> StrategyDecisionSchema:
         """Choose the response strategy.
 
@@ -84,18 +90,22 @@ class StrategySelector:
                 confidence=0.5,
             )
 
-        if self.generator is None:
+        if self.generator is None or self.config.get("ablations", {}).get("heuristic_strategy_selection", False):
             return heuristic_strategy(assessment, intent_model, self.config)
 
-        return self.generator.generate_structured(
-            strategy_selection_prompt(
-                request=request,
-                is_ambiguous=assessment.is_ambiguous,
-                num_missing_variables=len(assessment.missing_variables),
-                entropy=intent_model.entropy_estimate,
-                gap_description=intent_model.gap_description,
-                schema_text=schema_instruction(StrategyDecisionSchema),
-            ),
-            StrategyDecisionSchema,
-            temperature=0.0,
-        )
+        try:
+            return self.generator.generate_structured(
+                strategy_selection_prompt(
+                    request=request,
+                    is_ambiguous=assessment.is_ambiguous,
+                    num_missing_variables=len(assessment.missing_variables),
+                    entropy=intent_model.entropy_estimate,
+                    gap_description=intent_model.gap_description,
+                    schema_text=schema_instruction(StrategyDecisionSchema),
+                ),
+                StrategyDecisionSchema,
+                temperature=temperature if temperature is not None else 0.0,
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic strategy selection after generation failure: %s", exc)
+            return heuristic_strategy(assessment, intent_model, self.config)

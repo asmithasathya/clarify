@@ -7,7 +7,7 @@ name = "clarify"
 version = "0.1.0"
 description = "Research repository for studying when and how an assistant should clarify ambiguous user requests instead of answering prematurely."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.12"
 license = {text = "MIT"}
 authors = [
   {name = "clarify contributors"}
@@ -15,10 +15,10 @@ authors = [
 dependencies = [
   "datasets>=2.19.0",
   "numpy>=1.26.0",
+  "orjson>=3.10.0",
   "pydantic>=2.7.0",
   "PyYAML>=6.0.1",
-  "torch>=2.2.0",
-  "transformers>=4.41.0",
+  "tinker",
   "typer>=0.12.3",
   "tqdm>=4.66.0",
 ]
@@ -26,13 +26,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.2.0",
-]
-peft = [
-  "peft>=0.11.0",
-  "accelerate>=0.31.0",
-]
-vllm = [
-  "vllm>=0.5.4",
 ]
 
 [tool.setuptools]

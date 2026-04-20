@@ -7,6 +7,10 @@ from typing import Any
 from src.llm.generator import BaseGenerator
 from src.llm.prompts import intent_modeling_prompt, schema_instruction
 from src.llm.schemas import AmbiguityAssessmentSchema, IntentModelSchema, InterpretationSchema
+from src.utils.logging import get_logger
+
+
+LOGGER = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -44,6 +48,8 @@ class IntentModeler:
         self,
         request: str,
         assessment: AmbiguityAssessmentSchema,
+        *,
+        temperature: float | None = None,
     ) -> IntentModelSchema:
         """Produce candidate interpretations of the user's request.
 
@@ -53,18 +59,22 @@ class IntentModeler:
         if not self.config.get("ablations", {}).get("intent_modeling", True):
             return heuristic_intent_model(request, assessment)
 
-        if self.generator is None:
+        if self.generator is None or self.config.get("ablations", {}).get("heuristic_intent_modeling", False):
             return heuristic_intent_model(request, assessment)
 
         missing_vars = [mv.variable for mv in assessment.missing_variables]
 
-        return self.generator.generate_structured(
-            intent_modeling_prompt(
-                request=request,
-                ambiguity_rationale=assessment.rationale,
-                missing_variables=missing_vars,
-                schema_text=schema_instruction(IntentModelSchema),
-            ),
-            IntentModelSchema,
-            temperature=0.0,
-        )
+        try:
+            return self.generator.generate_structured(
+                intent_modeling_prompt(
+                    request=request,
+                    ambiguity_rationale=assessment.rationale,
+                    missing_variables=missing_vars,
+                    schema_text=schema_instruction(IntentModelSchema),
+                ),
+                IntentModelSchema,
+                temperature=temperature if temperature is not None else 0.0,
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic intent modeling after generation failure: %s", exc)
+            return heuristic_intent_model(request, assessment)

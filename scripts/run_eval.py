@@ -15,17 +15,20 @@ def main() -> None:
         "--methods",
         nargs="+",
         required=True,
-        help="Methods to evaluate, e.g. --methods direct_answer generic_hedge generic_clarify targeted_clarify",
+        help="Methods to evaluate, e.g. --methods direct_answer generic_hedge generic_clarify targeted_clarify resample_clarify",
     )
     parser.add_argument("--config", default="configs/default.yaml", help="Base config path.")
+    parser.add_argument("--dataset", default=None, help="Optional dataset override.")
+    parser.add_argument("--split", default=None, help="Optional split override.")
     parser.add_argument("--limit", type=int, default=None, help="Optional example limit.")
     parser.add_argument("--output-dir", default=None, help="Optional output directory.")
-    parser.add_argument("--backend", default=None, help="Optional generator backend override.")
     args = parser.parse_args()
 
     resolved = load_config(args.config)
-    if args.backend is not None:
-        resolved["model"]["generator"]["backend"] = args.backend
+    if args.dataset is not None:
+        resolved["data"]["primary_dataset"] = args.dataset
+    if args.split is not None:
+        resolved["data"]["split"] = args.split
     payload = run_experiment(
         config=resolved,
         methods=args.methods,

@@ -1,0 +1,3 @@
+\section{Limitations}
+
+The evaluation still depends on an LLM judge, and manual auditing is limited to a finite slice rather than a full human evaluation of all outputs. The first version of the method relies on disagreement across structured samples rather than token-level trace or logprob access, which keeps the framework model-agnostic but may miss some finer-grained failure signals. The optional DPO stage is scaffolded in the repository, but the paper-critical path remains inference plus LoRA SFT because that path is faster to reproduce and currently better supported by the local environment.

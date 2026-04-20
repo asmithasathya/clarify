@@ -1,233 +1,312 @@
 # clarify
 
-Research repository for studying when and how an assistant should clarify ambiguous user requests instead of answering prematurely.
+Research code for **intent stabilization via selective resampling**. The core idea is to make a model work harder on understanding user intent before it answers: sample multiple structured intent hypotheses, detect unstable stages, selectively resample the weak stage, and ask a clarification question only if intent confidence remains low.
 
-## Overview
+## What The Repo Does
 
-The repository has already been pivoted from legal QA verification to ambiguity-aware clarification. The central question is whether an assistant should:
+The repo now supports the full research workflow:
 
-1. answer immediately,
-2. answer with hedging,
-3. ask a generic clarification question, or
-4. detect the specific ambiguity and respond with a targeted strategy.
+- frozen `InfoQuest` `train/dev/test` splits for development and post-training
+- held-out `ClarifyBench v1` for generalization evaluation
+- Tinker-backed inference across multiple task models plus a separate judge model
+- five inference methods:
+  - `direct_answer`
+  - `generic_hedge`
+  - `generic_clarify`
+  - `targeted_clarify`
+  - `resample_clarify`
+- dev sweeps and confidence-calibrator fitting for the new method
+- teacher rollout export for modular distillation
+- LoRA SFT training scaffolding for a smaller student model
+- optional DPO preparation
+- sharded/resumable evaluation, audit export, and manuscript table generation
 
-The object of uncertainty here is the assistant's understanding of the user, not factual support from retrieved evidence.
+The current paper framing treats the first four methods as baselines and `resample_clarify` as the main method.
 
-## Current Pipeline
+## Models
 
-```text
-User request
-  -> ambiguity detection
-  -> intent modeling
-  -> strategy selection
-  -> one of:
-       - direct answer
-       - targeted clarification question
-       - narrowed answer under an explicit assumption
-       - alternatives presentation
-       - abstention
-```
+Default report models:
 
-The current implementation is single-turn. The system does not yet consume a follow-up user answer and continue the dialogue.
+- teacher task model: `Qwen/Qwen3-30B-A3B-Instruct-2507`
+- student base model: `Qwen/Qwen3-4B-Instruct-2507`
+- strong inference baseline: `openai/gpt-oss-120b`
+- judge model: `meta-llama/Llama-3.3-70B-Instruct`
 
-## Implemented Methods
-
-- `direct_answer`: answer immediately with no ambiguity handling.
-- `generic_hedge`: answer directly with hedging language.
-- `generic_clarify`: always ask a generic clarification question.
-- `targeted_clarify`: detect ambiguity, model interpretations, choose a strategy, and act.
-
-## Data and Schemas
-
-The primary dataset is [InfoQuest](https://huggingface.co/datasets/bryanlincoln/infoquest). Each example is normalized into `DialogueExample`, which stores:
-
-- the visible user request,
-- hidden context,
-- whether clarification is needed,
-- an optional gold answer,
-- ambiguity metadata,
-- checklist and persona fields when available.
-
-The main runtime output is `MethodResult`, which records:
-
-- the chosen response strategy,
-- the emitted response text,
-- whether the method answered directly,
-- whether it actually asked a clarification question,
-- ambiguity-detection signals,
-- evaluation flags and trace metadata.
-
-## Evaluation
-
-Current aggregate metrics:
-
-- `task_success_rate`
-- `appropriate_action_rate`
-- `clarification_rate`
-- `answer_rate`
-- `abstention_rate`
-- `clarification_precision`
-- `clarification_recall`
-- `ambiguity_detection_accuracy`
-- `unnecessary_clarification_rate`
-- `missed_ambiguity_rate`
-- `wrong_answer_under_ambiguity`
-- `strategy_distribution`
-
-Current correctness is an offline proxy computed during evaluation in `src/eval/runner.py`:
-
-- Final answers are scored with normalized text overlap against `gold_answer`.
-- Clarification questions use `gold_clarifying_question` when available.
-- If no gold clarification question exists, asking for clarification is treated as correct when `gold_clarification_needed` is true.
-- `present_alternatives` is currently treated as an appropriate ambiguity-handling action and gets a proxy correctness signal when clarification is needed.
-
-This is intentionally lightweight and should be treated as approximate open-ended evaluation, not a final benchmark design.
+All inference and training paths are Tinker-first. Local `vllm` / `transformers` backends are not part of the active workflow anymore.
 
 ## Installation
 
-Python 3.10+ is required.
-
-Base install:
+Python `3.11` is the supported runtime.
 
 ```bash
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+./.venv/bin/pip install -e ".[dev]"
+export TINKER_API_KEY=...
 ```
 
-Optional installs:
+You can also place the key in `.env`. See `.env.example`.
+
+## Data Artifacts
+
+Frozen dataset files:
+
+- `data/infoquest_snapshot.jsonl`
+- `data/infoquest_train.jsonl`
+- `data/infoquest_dev.jsonl`
+- `data/infoquest_test.jsonl`
+- `data/clarifybench_v1_full.jsonl`
+- `data/clarifybench_v1_dev.jsonl`
+- `data/clarifybench_v1_test.jsonl`
+
+All report runs should start from those local files, not from a live remote fetch.
+
+## Fast Start
+
+Prepare and validate the data:
 
 ```bash
-pip install -e ".[dev,vllm]"
-pip install -e ".[dev,vllm,peft]"
+./.venv/bin/python scripts/prepare_data.py
+./.venv/bin/python scripts/validate_data.py \
+  --manifest data/infoquest_manifest.json \
+  --manifest data/clarifybench_v1_manifest.json
 ```
 
-## Quickstart
-
-Smoke demo with a mock generator:
+Check the Tinker environment:
 
 ```bash
-python -m scripts.demo_example
+./.venv/bin/python scripts/preflight.py --config configs/report_baselines.yaml
 ```
 
-Download InfoQuest locally to JSONL:
+Run a single method:
 
 ```bash
-python -m scripts.download_infoquest
+./.venv/bin/python scripts/run_inference.py \
+  --method resample_clarify \
+  --dataset clarifybench \
+  --split test \
+  --limit 8
 ```
 
-Run one method:
+## End-To-End Research Workflow
+
+### 1. Dev Sweep For `resample_clarify`
+
+This searches a small resampling grid on `InfoQuest dev`, compares against `targeted_clarify`, and writes `best_config.json`.
 
 ```bash
-python scripts/run_inference.py --method targeted_clarify --limit 100
+./.venv/bin/python scripts/run_dev_sweep.py \
+  --config configs/report_baselines.yaml \
+  --output-dir outputs/dev_sweep
 ```
 
-Run full evaluation:
+Fit the intent-confidence calibrator from the selected dev run:
 
 ```bash
-python scripts/run_eval.py --methods direct_answer generic_hedge generic_clarify targeted_clarify
+./.venv/bin/python scripts/fit_intent_calibrator.py \
+  --predictions outputs/dev_sweep/<best_run>/resample_clarify/predictions.jsonl \
+  --output outputs/dev_sweep/intent_calibrator.json
 ```
 
-Run ablations for `targeted_clarify`:
+### 2. Frozen Baseline Matrix
+
+Run the full matrix over the frozen test splits:
 
 ```bash
-python scripts/run_ablation.py \
-  --ablation no_ambiguity_detection \
-  --ablation no_intent_modeling \
-  --ablation no_strategy_selection \
-  --ablation no_targeted_question
+./.venv/bin/python scripts/run_baseline_matrix.py \
+  --config configs/report_baselines.yaml
 ```
 
-Switch to the Transformers backend:
+This runs all report methods across all report task models and datasets. It is resumable, and the sharded leaf workflow can be used when a single leaf is too slow.
+
+### 3. Resample Ablations
 
 ```bash
-python scripts/run_eval.py --methods targeted_clarify --backend transformers
+./.venv/bin/python scripts/run_ablation.py \
+  --config configs/report_baselines.yaml \
+  --dataset infoquest \
+  --split test \
+  --method resample_clarify \
+  --ablation single_sample_only \
+  --ablation no_selective_resample \
+  --ablation resample_all_stages \
+  --ablation one_round_only \
+  --ablation clarify_immediately \
+  --ablation no_clarification_fallback \
+  --ablation no_calibration \
+  --ablation generic_question_fallback
 ```
 
-Make targets:
+### 4. Manual Audit Export
 
 ```bash
-make install-dev
-make download
-make demo
-make eval
+./.venv/bin/python scripts/export_audit.py \
+  --matrix-root outputs/baselines/<run_id>
 ```
 
-## Configuration
+After annotation:
 
-`configs/default.yaml` currently includes:
+```bash
+./.venv/bin/python scripts/audit_agreement.py \
+  --audit-sheet outputs/baselines/<run_id>/audit/audit_sheet.csv \
+  --audit-key outputs/baselines/<run_id>/audit/audit_key.csv \
+  --output outputs/baselines/<run_id>/audit/agreement.json
+```
 
-- `configs/model/qwen25_7b.yaml`
-- `configs/method/targeted_clarify.yaml`
+### 5. Teacher Rollouts
 
-Key defaults:
+```bash
+./.venv/bin/python scripts/export_teacher_rollouts.py \
+  --config configs/report_baselines.yaml \
+  --dataset infoquest \
+  --split train \
+  --output-dir outputs/teacher_rollouts
+```
 
-- dataset: `infoquest`
-- generation temperature: `0.0`
-- backend defaults come from the model config
-- ambiguity threshold: `0.5`
-- max clarification turns: `1`
+This writes:
 
-Current ablation flags:
+- `teacher_rollouts.jsonl`
+- `sft_corpus.jsonl`
+- `preference_corpus.jsonl`
 
-- `ambiguity_detection`
-- `intent_modeling`
-- `strategy_selection`
-- `targeted_question`
+### 6. Student LoRA SFT
 
-## Outputs
+```bash
+./.venv/bin/python scripts/run_student_sft.py \
+  --config configs/report_baselines.yaml \
+  --train-corpus outputs/teacher_rollouts/sft_corpus.jsonl \
+  --output-dir outputs/student_sft
+```
 
-`run_eval.py` and `run_ablation.py` write timestamped or user-specified directories under `outputs/`.
+### 7. Student Evaluation
 
-Per-method outputs currently include:
+```bash
+./.venv/bin/python scripts/run_student_eval.py \
+  --config configs/report_baselines.yaml \
+  --sft-checkpoint "$(./.venv/bin/python scripts/read_manifest_value.py --path outputs/student_sft/student_sft_manifest.json --key checkpoint_path)" \
+  --output-dir outputs/student_eval
+```
+
+### 8. Optional DPO Preparation
+
+```bash
+./.venv/bin/python scripts/run_student_dpo.py \
+  --config configs/report_baselines.yaml \
+  --preference-corpus outputs/teacher_rollouts/preference_corpus.jsonl \
+  --sft-checkpoint "$(./.venv/bin/python scripts/read_manifest_value.py --path outputs/student_sft/student_sft_manifest.json --key checkpoint_path)" \
+  --output-dir outputs/student_dpo \
+  --prepare-only
+```
+
+The repository prepares the manifest and dataset for DPO. Full execution depends on an optional `tinker-cookbook` workflow that is not required for the first paper-critical path.
+
+### 9. Paper Tables And Build
+
+```bash
+./.venv/bin/python scripts/paper_tables.py \
+  --matrix-root outputs/baselines/<run_id> \
+  --ablation-root outputs/ablations \
+  --student-root outputs/student_eval \
+  --agreement-json outputs/baselines/<run_id>/audit/agreement.json \
+  --output-dir paper/generated
+
+./.venv/bin/python scripts/build_paper.py
+```
+
+## One-Command Pipeline
+
+For a resumable end-to-end orchestration:
+
+```bash
+./.venv/bin/python scripts/run_research_pipeline.py \
+  --config configs/report_baselines.yaml
+```
+
+This script can prepare data, run the dev sweep, fit the calibrator, run the baseline matrix, launch ablations, export audit artifacts, export teacher rollouts, run student SFT, prepare DPO, run student eval, generate paper tables, and build the manuscript when `pdflatex` is available.
+
+Use `--skip-*` flags to resume only the missing phases.
+
+## Multi-Terminal Execution
+
+To generate shard-safe commands for parallel execution:
+
+```bash
+./.venv/bin/python scripts/plan_jobs.py \
+  --config configs/report_baselines.yaml \
+  --phase all \
+  --output-root outputs/research_pipeline
+```
+
+That script emits commands that can be pasted into multiple terminals or a `tmux` session. See `docs/job_parallelism.md` for recommended terminal allocation.
+
+## Key Outputs
+
+Single method:
 
 - `predictions.jsonl`
 - `metrics.json`
 - `summary.csv`
-- `report_snippet.md`
+- `case_studies.md`
+- `manifest.json`
 
-Cross-method evaluation writes:
+Baseline matrix:
 
+- `matrix_metrics.csv`
+- `matrix_metrics.json`
 - `comparison_report.md`
-- `all_metrics.json`
-- `all_metrics.csv`
-- `resolved_config.json`
+- `repeatability.csv`
+- nested per-dataset / per-model / per-method artifacts
 
-Single-method inference writes outputs under `outputs/<method>/` by default, and `run_method()` creates a nested method directory inside the selected output root.
+Teacher rollouts:
 
-## Repository Layout
+- `teacher_rollouts.jsonl`
+- `sft_corpus.jsonl`
+- `preference_corpus.jsonl`
+- `teacher_rollout_manifest.json`
 
-```text
-clarify/
-  README.md
-  TODO_PLAN.md
-  Makefile
-  pyproject.toml
-  configs/
-    default.yaml
-    model/
-    method/
-  scripts/
-    demo_example.py
-    download_infoquest.py
-    run_ablation.py
-    run_eval.py
-    run_inference.py
-  src/
-    data/
-    eval/
-    llm/
-    methods/
-    understand/
-    utils/
-  tests/
+Student training/eval:
+
+- `student_sft_manifest.json`
+- `student_sft_history.jsonl`
+- `student_eval_metrics.csv`
+- `student_eval_report.md`
+- `student_dpo_manifest.json`
+
+Paper:
+
+- `paper/generated/*.tex`
+- `paper/main.pdf`
+
+## Main Docs
+
+- [docs/end_to_end.md](docs/end_to_end.md)
+- [docs/training.md](docs/training.md)
+- [docs/job_parallelism.md](docs/job_parallelism.md)
+- [docs/paper.md](docs/paper.md)
+
+## Make Targets
+
+```bash
+make install-dev
+make prepare-data
+make preflight
+make dev-sweep
+make baseline
+make ablation
+make teacher-rollouts
+make student-sft TRAIN_CORPUS=outputs/teacher_rollouts/sft_corpus.jsonl
+make student-eval SFT_CHECKPOINT=...
+make student-dpo PREF_CORPUS=outputs/teacher_rollouts/preference_corpus.jsonl SFT_CHECKPOINT=...
+make job-plan
+make research-pipeline
+make paper-tables MATRIX_ROOT=outputs/baselines/<run_id> ABLATION_ROOT=outputs/ablations STUDENT_ROOT=outputs/student_eval
+make paper
 ```
 
-## Current Limitations
+## Current Scope And Limits
 
-- Single-turn evaluation only.
-- No live follow-up clarification loop yet.
-- Open-ended correctness is based on a simple overlap proxy.
-- No ProMISe adapter is implemented.
-- `targeted_clarify` supports `present_alternatives`, but the evaluation still treats it with a coarse proxy rather than a dedicated metric.
-- Running the real model stack requires a Python 3.10+ environment with the appropriate optional dependencies installed.
+- The active paper-critical path is inference plus LoRA SFT. DPO is optional and scaffolded, not required.
+- The v1 method uses disagreement across structured samples rather than token-logprob tracing.
+- Live Tinker runs still require `TINKER_API_KEY` to be visible to the current process.
+- `pdflatex` is required to build the PDF manuscript.
+- Legacy artifacts under `outputs/report_pipeline_20260414_123119` are retained for comparison, but they are not the final pivoted paper root.

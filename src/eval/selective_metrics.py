@@ -14,6 +14,13 @@ def answer_rate(results: Sequence[MethodResult]) -> float:
     return sum(1 for r in results if r.answered_directly) / len(results)
 
 
+def final_answer_rate(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples that end with a final answer after any dialogue."""
+    if not results:
+        return 0.0
+    return sum(1 for r in results if r.final_answer) / len(results)
+
+
 def clarification_rate(results: Sequence[MethodResult]) -> float:
     """Fraction of examples where the method asked a clarification question."""
     if not results:
@@ -78,3 +85,10 @@ def wrong_answer_under_ambiguity(results: Sequence[MethodResult]) -> float:
         1 for r in results
         if r.answered_directly and r.gold_clarification_needed and not r.correct
     ) / len(results)
+
+
+def multi_turn_completion_rate(results: Sequence[MethodResult]) -> float:
+    """Fraction of examples that reached a final answer after clarification."""
+    if not results:
+        return 0.0
+    return sum(1 for r in results if r.answered_after_clarification) / len(results)

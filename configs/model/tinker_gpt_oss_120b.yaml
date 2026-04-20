@@ -1,0 +1,6 @@
+model:
+  generator:
+    backend: tinker
+    base_model: openai/gpt-oss-120b
+    model_path: null
+    api_key_env_var: TINKER_API_KEY

@@ -60,6 +60,7 @@ def normalize_infoquest_example(
 
     return DialogueExample(
         example_id=f"infoquest-{seed.get('id', 0)}-s{setting_index}",
+        dataset_name="infoquest",
         user_request=str(seed.get("seed_message", "")).strip(),
         hidden_context=_setting_to_hidden_context(setting),
         gold_clarification_needed=True,  # InfoQuest messages are intentionally ambiguous
@@ -86,6 +87,17 @@ def _dataset_loader(*args: Any, **kwargs: Any) -> Any:
     return load_dataset(*args, **kwargs)
 
 
+def _hub_json_loader(filename: str, loader: Callable[..., Any]) -> Any:
+    from huggingface_hub import hf_hub_download
+
+    path = hf_hub_download(
+        repo_id="bryanlincoln/infoquest",
+        repo_type="dataset",
+        filename=filename,
+    )
+    return loader("json", data_files=path, split="train")
+
+
 def load_infoquest(
     limit: int | None = None,
     *,
@@ -105,8 +117,12 @@ def load_infoquest(
         Override for ``datasets.load_dataset`` (useful for testing).
     """
     _load = loader or _dataset_loader
-    seeds_ds = _load("bryanlincoln/infoquest", data_files="seed_messages.jsonl", split="train")
-    settings_ds = _load("bryanlincoln/infoquest", data_files="settings.jsonl", split="train")
+    try:
+        seeds_ds = _load("bryanlincoln/infoquest", data_files="seed_messages.jsonl", split="train")
+        settings_ds = _load("bryanlincoln/infoquest", data_files="settings.jsonl", split="train")
+    except Exception:
+        seeds_ds = _hub_json_loader("seed_messages.jsonl", _load)
+        settings_ds = _hub_json_loader("settings.jsonl", _load)
 
     settings_by_id: dict[int, dict[str, Any]] = {}
     for record in settings_ds:
@@ -148,7 +164,10 @@ def load_infoquest_local(path: str | Path, limit: int | None = None) -> list[Dia
             line = line.strip()
             if not line:
                 continue
-            examples.append(DialogueExample.model_validate_json(line))
+            example = DialogueExample.model_validate_json(line)
+            if example.dataset_name == "unknown":
+                example.dataset_name = "infoquest"
+            examples.append(example)
             if limit is not None and len(examples) >= limit:
                 break
     return examples

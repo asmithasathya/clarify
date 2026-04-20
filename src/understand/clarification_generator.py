@@ -9,9 +9,11 @@ from src.llm.generator import BaseGenerator
 from src.llm.prompts import (
     alternatives_prompt,
     clarification_question_prompt,
+    conversation_answer_prompt,
     direct_answer_prompt,
     generic_clarification_prompt,
     narrowed_answer_prompt,
+    simulate_user_reply_prompt,
     schema_instruction,
 )
 from src.llm.schemas import (
@@ -20,7 +22,12 @@ from src.llm.schemas import (
     ClarificationQuestionSchema,
     IntentModelSchema,
     NarrowedAnswerSchema,
+    UserReplySchema,
 )
+from src.utils.logging import get_logger
+
+
+LOGGER = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +59,11 @@ def _fallback_answer(request: str) -> AnswerSchema:
     )
 
 
+def _followup_answer_max_new_tokens(config: dict[str, Any]) -> int:
+    generation_cfg = config.get("generation", {})
+    return int(generation_cfg.get("followup_max_new_tokens", 768))
+
+
 # ---------------------------------------------------------------------------
 # Main class
 # ---------------------------------------------------------------------------
@@ -68,6 +80,8 @@ class ClarificationGenerator:
         request: str,
         target_variable: str,
         intent_model: IntentModelSchema,
+        *,
+        temperature: float | None = None,
     ) -> ClarificationQuestionSchema:
         """Generate a single targeted clarifying question."""
         use_targeted_question = self.config.get("ablations", {}).get("targeted_question", True)
@@ -94,11 +108,17 @@ class ClarificationGenerator:
                 schema_text=schema_instruction(ClarificationQuestionSchema),
             )
         )
-        return self.generator.generate_structured(
-            prompt,
-            ClarificationQuestionSchema,
-            temperature=0.0,
-        )
+        try:
+            return self.generator.generate_structured(
+                prompt,
+                ClarificationQuestionSchema,
+                temperature=temperature if temperature is not None else 0.0,
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic clarification question after generation failure: %s", exc)
+            if not use_targeted_question:
+                return _fallback_generic_clarification()
+            return _fallback_clarification(target_variable, request)
 
     # -- Direct answer -----------------------------------------------------
 
@@ -107,14 +127,76 @@ class ClarificationGenerator:
         if self.generator is None:
             return _fallback_answer(request)
 
-        return self.generator.generate_structured(
-            direct_answer_prompt(
-                request=request,
-                schema_text=schema_instruction(AnswerSchema),
-            ),
-            AnswerSchema,
-            temperature=0.0,
-        )
+        try:
+            return self.generator.generate_structured(
+                direct_answer_prompt(
+                    request=request,
+                    schema_text=schema_instruction(AnswerSchema),
+                ),
+                AnswerSchema,
+                temperature=0.0,
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic direct answer after generation failure: %s", exc)
+            return _fallback_answer(request)
+
+    def generate_conversation_answer(
+        self,
+        conversation: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+    ) -> AnswerSchema:
+        """Answer after a clarification follow-up in a multi-turn setting."""
+        if self.generator is None:
+            latest_user = conversation[-1]["content"] if conversation else ""
+            return _fallback_answer(latest_user)
+
+        try:
+            return self.generator.generate_structured(
+                conversation_answer_prompt(
+                    conversation=conversation,
+                    schema_text=schema_instruction(AnswerSchema),
+                ),
+                AnswerSchema,
+                temperature=temperature if temperature is not None else 0.0,
+                max_new_tokens=_followup_answer_max_new_tokens(self.config),
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic follow-up answer after generation failure: %s", exc)
+            return _fallback_answer(latest_user)
+
+    def simulate_user_reply(
+        self,
+        request: str,
+        assistant_message: str,
+        hidden_context: str,
+        *,
+        temperature: float | None = None,
+    ) -> UserReplySchema:
+        """Produce a synthetic user follow-up grounded in hidden context."""
+        if self.generator is None:
+            return UserReplySchema(
+                user_reply=f"Here are the relevant details: {hidden_context}",
+                grounded_in_hidden_context=True,
+            )
+
+        try:
+            return self.generator.generate_structured(
+                simulate_user_reply_prompt(
+                    request=request,
+                    assistant_message=assistant_message,
+                    hidden_context=hidden_context,
+                    schema_text=schema_instruction(UserReplySchema),
+                ),
+                UserReplySchema,
+                temperature=temperature if temperature is not None else 0.0,
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic user reply simulation after generation failure: %s", exc)
+            return UserReplySchema(
+                user_reply=f"Here are the relevant details: {hidden_context}",
+                grounded_in_hidden_context=True,
+            )
 
     # -- Narrowed answer ---------------------------------------------------
 
@@ -122,6 +204,8 @@ class ClarificationGenerator:
         self,
         request: str,
         assumed_interpretation: str,
+        *,
+        temperature: float | None = None,
     ) -> NarrowedAnswerSchema:
         """Answer under an explicitly stated assumption."""
         if self.generator is None:
@@ -132,15 +216,24 @@ class ClarificationGenerator:
                 caveats="Fallback response.",
             )
 
-        return self.generator.generate_structured(
-            narrowed_answer_prompt(
-                request=request,
-                assumed_interpretation=assumed_interpretation,
-                schema_text=schema_instruction(NarrowedAnswerSchema),
-            ),
-            NarrowedAnswerSchema,
-            temperature=0.0,
-        )
+        try:
+            return self.generator.generate_structured(
+                narrowed_answer_prompt(
+                    request=request,
+                    assumed_interpretation=assumed_interpretation,
+                    schema_text=schema_instruction(NarrowedAnswerSchema),
+                ),
+                NarrowedAnswerSchema,
+                temperature=temperature if temperature is not None else 0.0,
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic narrowed answer after generation failure: %s", exc)
+            return NarrowedAnswerSchema(
+                stated_assumption=assumed_interpretation,
+                answer=f"Assuming '{assumed_interpretation}': general response to '{request[:80]}'.",
+                confidence=0.3,
+                caveats="Fallback response.",
+            )
 
     # -- Present alternatives -----------------------------------------------
 
@@ -148,6 +241,8 @@ class ClarificationGenerator:
         self,
         request: str,
         intent_model: IntentModelSchema,
+        *,
+        temperature: float | None = None,
     ) -> AlternativesResponseSchema:
         """Present multiple interpretations each with a short answer."""
         interps = [
@@ -166,12 +261,25 @@ class ClarificationGenerator:
                 alternatives=alts,
             )
 
-        return self.generator.generate_structured(
-            alternatives_prompt(
-                request=request,
-                interpretations_json=json.dumps(interps, indent=2),
-                schema_text=schema_instruction(AlternativesResponseSchema),
-            ),
-            AlternativesResponseSchema,
-            temperature=0.0,
-        )
+        try:
+            return self.generator.generate_structured(
+                alternatives_prompt(
+                    request=request,
+                    interpretations_json=json.dumps(interps, indent=2),
+                    schema_text=schema_instruction(AlternativesResponseSchema),
+                ),
+                AlternativesResponseSchema,
+                temperature=temperature if temperature is not None else 0.0,
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic alternatives response after generation failure: %s", exc)
+            alts = [
+                {"interpretation": i["interpretation"], "answer": f"Answer for: {i['interpretation'][:60]}"}
+                for i in interps[:3]
+            ]
+            if len(alts) < 2:
+                alts.append({"interpretation": "alternative interpretation", "answer": "alternative answer"})
+            return AlternativesResponseSchema(
+                preamble="Your request could mean several things:",
+                alternatives=alts,
+            )

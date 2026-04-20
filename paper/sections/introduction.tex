@@ -1,0 +1,5 @@
+\section{Introduction}
+
+Understanding user intent is often the real bottleneck in assistant quality. When a request is underspecified, answering quickly can lock the model into the wrong interpretation, while asking for clarification too eagerly slows the interaction down. This project studies a middle ground: stabilize the model's interpretation first, then clarify only if structured resampling fails to reach a confident understanding.
+
+The repository keeps the earlier clarification policies as baselines, but the main contribution is \texttt{resample\_clarify}: a model-agnostic wrapper that samples ambiguity judgments and candidate intent models, identifies unstable stages, selectively repairs those stages, and falls back to clarification only when intent confidence remains low. The paper also tracks a modular student-distillation path in which the teacher's stabilized stage outputs are used to train a smaller model with LoRA SFT and, optionally, DPO.

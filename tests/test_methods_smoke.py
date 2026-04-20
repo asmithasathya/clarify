@@ -5,6 +5,7 @@ from src.llm.generator import MockGenerator
 from src.methods.direct_answer import run_direct_answer
 from src.methods.generic_clarify import run_generic_clarify
 from src.methods.generic_hedge import run_generic_hedge
+from src.methods.resample_clarify import run_resample_clarify
 from src.methods.targeted_clarify import run_targeted_clarify
 from src.understand.ambiguity_detector import AmbiguityDetector
 from src.understand.clarification_generator import ClarificationGenerator
@@ -354,3 +355,39 @@ def test_targeted_clarify_clear_request():
     assert result.answered_directly is True
     assert result.is_ambiguous_detected is False
     assert "Paris" in result.response_text
+
+
+def test_resample_clarify():
+    config = make_config()
+    config["intent_resampling"] = {
+        "initial_samples": 3,
+        "repair_samples": 2,
+        "max_rounds": 1,
+        "stage_temperature": 0.6,
+        "weak_point_threshold": 0.75,
+        "confidence_threshold": 0.8,
+        "clarification_fallback_threshold": 0.8,
+        "clarify_if_low_confidence": True,
+        "resample_stages": [
+            "ambiguity_detection",
+            "intent_modeling",
+            "strategy_selection",
+            "clarification_target",
+        ],
+    }
+    generator = MockGenerator(responder=_responder, config=config)
+    result = run_resample_clarify(
+        make_example(),
+        config=config,
+        ambiguity_detector=AmbiguityDetector(config, generator=generator),
+        intent_modeler=IntentModeler(config, generator=generator),
+        strategy_selector=StrategySelector(config, generator=generator),
+        clarification_generator=ClarificationGenerator(config, generator=generator),
+    )
+    assert result.method == "resample_clarify"
+    assert result.asked_clarification is True
+    assert result.intent_confidence is not None
+    assert result.confidence_band in {"low", "medium", "high"}
+    assert result.sample_count >= 9
+    assert result.task_model_calls >= result.sample_count
+    assert result.estimated_cost == float(result.task_model_calls)

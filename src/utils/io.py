@@ -68,7 +68,14 @@ def append_jsonl(record: Any, path: str | Path) -> None:
 def write_csv(rows: list[dict[str, Any]], path: str | Path) -> None:
     if not rows:
         return
-    fieldnames = list(rows[0].keys())
+    fieldnames: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for key in row.keys():
+            if key in seen:
+                continue
+            seen.add(key)
+            fieldnames.append(key)
     with Path(path).open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -89,4 +96,3 @@ def markdown_table(headers: list[str], rows: list[list[Any]]) -> str:
     for row in rows:
         lines.append("| " + " | ".join(str(value) for value in row) + " |")
     return "\n".join(lines)
-

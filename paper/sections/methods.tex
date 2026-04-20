@@ -1,0 +1,13 @@
+\section{Methods}
+
+The evaluation compares five inference-time methods over the same Tinker-hosted task models.
+
+\begin{itemize}[leftmargin=1.5em]
+\item \textbf{direct\_answer}: answer immediately without ambiguity handling.
+\item \textbf{generic\_hedge}: answer directly with hedging language.
+\item \textbf{generic\_clarify}: always ask a generic clarification question.
+\item \textbf{targeted\_clarify}: detect ambiguity, model candidate interpretations, choose a response strategy, and continue to a final answer after follow-up when appropriate.
+\item \textbf{resample\_clarify}: sample multiple ambiguity and intent hypotheses, score agreement, selectively resample the weakest stage, calibrate intent confidence, and clarify only when uncertainty remains above threshold.
+\end{itemize}
+
+For the student phase, the repository exports teacher rollouts into stage-level SFT records and preference pairs. The intended training path is modular: the student learns the same structured stage outputs used by the teacher wrapper, so the distilled model plugs into the existing runtime without changing the pipeline architecture.

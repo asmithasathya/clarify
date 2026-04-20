@@ -9,6 +9,10 @@ from src.data.schema import AmbiguityRecord
 from src.llm.generator import BaseGenerator
 from src.llm.prompts import ambiguity_detection_prompt, schema_instruction
 from src.llm.schemas import AmbiguityAssessmentSchema
+from src.utils.logging import get_logger
+
+
+LOGGER = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +76,12 @@ class AmbiguityDetector:
         self.config = config
         self.generator = generator
 
-    def detect(self, request: str) -> AmbiguityAssessmentSchema:
+    def detect(
+        self,
+        request: str,
+        *,
+        temperature: float | None = None,
+    ) -> AmbiguityAssessmentSchema:
         """Detect ambiguity in a user request.
 
         Uses the LLM when available, falls back to heuristics otherwise.
@@ -88,17 +97,21 @@ class AmbiguityDetector:
                 rationale="Ablation: ambiguity detection disabled.",
             )
 
-        if self.generator is None:
+        if self.generator is None or self.config.get("ablations", {}).get("heuristic_ambiguity_detection", False):
             return heuristic_ambiguity(request)
 
-        return self.generator.generate_structured(
-            ambiguity_detection_prompt(
-                request=request,
-                schema_text=schema_instruction(AmbiguityAssessmentSchema),
-            ),
-            AmbiguityAssessmentSchema,
-            temperature=0.0,
-        )
+        try:
+            return self.generator.generate_structured(
+                ambiguity_detection_prompt(
+                    request=request,
+                    schema_text=schema_instruction(AmbiguityAssessmentSchema),
+                ),
+                AmbiguityAssessmentSchema,
+                temperature=temperature if temperature is not None else 0.0,
+            )
+        except Exception as exc:
+            LOGGER.warning("Falling back to heuristic ambiguity detection after generation failure: %s", exc)
+            return heuristic_ambiguity(request)
 
     def to_records(self, assessment: AmbiguityAssessmentSchema) -> list[AmbiguityRecord]:
         """Convert a schema result to a list of AmbiguityRecord objects."""

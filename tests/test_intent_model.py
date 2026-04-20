@@ -1,4 +1,5 @@
 from src.llm.schemas import AmbiguityAssessmentSchema
+from src.llm.generator import MockGenerator
 from src.understand.intent_model import IntentModeler, heuristic_intent_model
 
 
@@ -41,4 +42,17 @@ def test_modeler_heuristic_fallback():
     modeler = IntentModeler(config, generator=None)
     assessment = _make_assessment()
     result = modeler.model("Help me", assessment)
+    assert result.gap_description
+
+
+def test_modeler_falls_back_when_generation_fails():
+    config = {"ablations": {"intent_modeling": True}, "generation": {"json_max_retries": 0}}
+
+    def _raising_responder(_messages):
+        raise RuntimeError("bad structured output")
+
+    modeler = IntentModeler(config, generator=MockGenerator(responder=_raising_responder, config=config))
+    assessment = _make_assessment()
+    result = modeler.model("Help me choose a plan", assessment)
+    assert len(result.interpretations) >= 1
     assert result.gap_description

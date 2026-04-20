@@ -1,10 +1,11 @@
 includes:
-  - configs/model/qwen25_7b.yaml
+  - configs/model/tinker_qwen3_30b.yaml
   - configs/method/targeted_clarify.yaml
 
 project:
   name: clarify
   seed: 42
+  prompt_version: baseline-v1
 
 paths:
   data_dir: data
@@ -12,15 +13,19 @@ paths:
 
 data:
   primary_dataset: infoquest
+  split: null
   infoquest:
     both_settings: true
     local_path: null  # set to a local .jsonl path for offline use
-
-runtime:
-  device: cuda
-  dtype: auto
-  batch_size: 16
-  num_workers: 0
+    split_paths:
+      train: data/infoquest_train.jsonl
+      dev: data/infoquest_dev.jsonl
+      test: data/infoquest_test.jsonl
+  clarifybench:
+    local_path: data/clarifybench_v1_full.jsonl
+    split_paths:
+      dev: data/clarifybench_v1_dev.jsonl
+      test: data/clarifybench_v1_test.jsonl
 
 generation:
   temperature: 0.0
@@ -28,15 +33,87 @@ generation:
   max_new_tokens: 512
   json_max_retries: 2
 
+runtime:
+  parallelism:
+    max_concurrency: 4
+    teacher_shard_count_infoquest: 4
+    teacher_shard_count_clarifybench: 3
+    rollout_shard_count: 4
+
 understand:
   ambiguity_threshold: 0.5
-  max_clarification_turns: 1
+  max_clarification_turns: 2
+
+intent_resampling:
+  enabled: true
+  initial_samples: 5
+  repair_samples: 3
+  max_rounds: 2
+  stage_temperature: 0.7
+  weak_point_threshold: 0.75
+  clarification_fallback_threshold: 0.80
+  confidence_threshold: 0.80
+  clarify_if_low_confidence: true
+  clarification_target_threshold: 0.70
+  resample_stages:
+    - ambiguity_detection
+    - intent_modeling
+    - strategy_selection
+    - clarification_target
+  cache_prompt_renders: true
+
+intent_calibration:
+  enabled: true
+  medium_threshold: 0.55
+  high_threshold: 0.80
+  calibrator_path: null
+  n_buckets: 10
+
+distillation:
+  enabled: false
+  teacher_model: Qwen/Qwen3-30B-A3B-Instruct-2507
+  student_model: Qwen/Qwen3-4B-Instruct-2507
+  rollouts_per_example: 4
+  lora_rank: 32
+  learning_rate: 1.0e-4
+  batch_size: 16
+  max_steps: 200
+  publish_alias: null
+  corpus_dir: outputs/distillation
+
+post_training:
+  dpo_enabled: false
+  beta: 0.1
+  max_steps: 100
 
 evaluation:
   case_study_limit: 25
+  answer_match_threshold: 0.6
+  user_reply_simulation:
+    use_generator: true
+  llm_judge:
+    enabled: true
+    base_model: meta-llama/Llama-3.3-70B-Instruct
+    version: judge-v1
+  repeatability:
+    slice_fraction: 0.1
+    tolerance: 0.02
+    methods:
+      - resample_clarify
 
 ablations:
   ambiguity_detection: true
   intent_modeling: true
   strategy_selection: true
   targeted_question: true
+  heuristic_ambiguity_detection: false
+  heuristic_intent_modeling: false
+  heuristic_strategy_selection: false
+  single_sample_only: false
+  no_selective_resample: false
+  resample_all_stages: false
+  one_round_only: false
+  clarify_immediately: false
+  no_clarification_fallback: false
+  no_calibration: false
+  generic_question_fallback: false

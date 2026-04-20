@@ -172,6 +172,32 @@ def direct_answer_prompt(
 
 
 # ---------------------------------------------------------------------------
+# Conversation answer (after clarification follow-up)
+# ---------------------------------------------------------------------------
+
+def conversation_answer_prompt(
+    conversation: list[dict[str, str]],
+    schema_text: str,
+) -> list[dict[str, str]]:
+    conversation_block = "\n".join(
+        f"{message['role'].capitalize()}: {message['content']}" for message in conversation
+    )
+    return [
+        {"role": "system", "content": SYSTEM_PREAMBLE},
+        {
+            "role": "user",
+            "content": (
+                "Continue the conversation below. The user has now provided "
+                "enough context. Give the best final answer to the user's need.\n"
+                "Keep the answer concise, concrete, and under 120 words.\n\n"
+                f"{conversation_block}\n\n"
+                f"{schema_text}"
+            ),
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Narrowed answer (answer under stated assumptions)
 # ---------------------------------------------------------------------------
 
@@ -262,6 +288,110 @@ def generic_clarification_prompt(
                 "clarifying question. The question can be generic \u2014 you do not "
                 "need to identify specific ambiguities.\n\n"
                 f"User request: {request}\n\n"
+                f"{schema_text}"
+            ),
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# User follow-up simulation for multi-turn evaluation
+# ---------------------------------------------------------------------------
+
+def simulate_user_reply_prompt(
+    request: str,
+    assistant_message: str,
+    hidden_context: str,
+    schema_text: str,
+) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": SYSTEM_PREAMBLE},
+        {
+            "role": "user",
+            "content": (
+                "Simulate the user's next reply in a two-turn benchmark.\n\n"
+                "You know the hidden context below, but the assistant does not. "
+                "Write a short natural user reply that answers the assistant's "
+                "question or selects the right branch without exposing that it is "
+                "benchmark metadata.\n\n"
+                f"Original user request: {request}\n"
+                f"Assistant message: {assistant_message}\n"
+                f"Hidden context: {hidden_context}\n\n"
+                f"{schema_text}"
+            ),
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# LLM-judge prompts
+# ---------------------------------------------------------------------------
+
+def judge_answer_prompt(
+    request: str,
+    hidden_context: str,
+    gold_answer: str | None,
+    candidate_answer: str,
+    schema_text: str,
+) -> list[dict[str, str]]:
+    gold_block = gold_answer or "(no gold answer provided)"
+    return [
+        {"role": "system", "content": SYSTEM_PREAMBLE},
+        {
+            "role": "user",
+            "content": (
+                "Evaluate whether the candidate assistant answer is correct and helpful "
+                "given the hidden context. Use the gold answer as a reference when present, "
+                "but prioritize semantic correctness over wording overlap.\n\n"
+                f"User request: {request}\n"
+                f"Hidden context: {hidden_context}\n"
+                f"Gold answer: {gold_block}\n"
+                f"Candidate answer: {candidate_answer}\n\n"
+                f"{schema_text}"
+            ),
+        },
+    ]
+
+
+def judge_clarification_prompt(
+    request: str,
+    hidden_context: str,
+    clarification_question: str,
+    schema_text: str,
+) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": SYSTEM_PREAMBLE},
+        {
+            "role": "user",
+            "content": (
+                "Evaluate whether the assistant's clarification question targets the most "
+                "important missing variable needed to answer the original request.\n\n"
+                f"User request: {request}\n"
+                f"Hidden context: {hidden_context}\n"
+                f"Clarification question: {clarification_question}\n\n"
+                f"{schema_text}"
+            ),
+        },
+    ]
+
+
+def judge_alternatives_prompt(
+    request: str,
+    hidden_context: str,
+    alternatives_response: str,
+    schema_text: str,
+) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": SYSTEM_PREAMBLE},
+        {
+            "role": "user",
+            "content": (
+                "Evaluate whether the assistant's alternatives are useful and well targeted. "
+                "A good response should separate plausible interpretations and include one that "
+                "matches the hidden context.\n\n"
+                f"User request: {request}\n"
+                f"Hidden context: {hidden_context}\n"
+                f"Alternatives response: {alternatives_response}\n\n"
                 f"{schema_text}"
             ),
         },

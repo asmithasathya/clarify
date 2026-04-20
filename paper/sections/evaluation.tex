@@ -1,0 +1,7 @@
+\section{Evaluation}
+
+All report runs use a separate LLM judge from the task model. In addition to task-success and action-appropriateness metrics, the pivoted evaluation tracks intent-confidence, resampling frequency, call budget, latency, and estimated cost. We also export a 100-example manual audit slice to measure judge-human agreement on both answer correctness and action appropriateness, and we run repeatability checks only on the key claims rather than the full matrix.
+Until the audit is annotated or repeatability finishes, those tables remain as explicit manuscript placeholders.
+
+\input{generated/repeatability.tex}
+\input{generated/audit_agreement.tex}

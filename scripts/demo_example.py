@@ -80,6 +80,14 @@ def _demo_responder(messages):
             "why_this_helps": "This resolves both the investment type and risk tolerance in one natural question.",
         })
 
+    if "Continue the conversation below" in prompt:
+        return json.dumps({
+            "answer": "Given your five-year timeline and need for capital preservation, start with a mix of high-yield savings and conservative diversified funds rather than aggressive investments.",
+            "assumed_interpretation": None,
+            "confidence": 0.86,
+            "caveats": None,
+        })
+
     # Fallback: direct answer
     return json.dumps({
         "answer": "I'd recommend starting with a diversified index fund.",
@@ -140,6 +148,17 @@ def main() -> None:
     typer.echo(f"\nAmbiguity detected: {result.is_ambiguous_detected}")
     typer.echo(f"Asked clarification: {result.asked_clarification}")
     typer.echo(f"Missing variables: {result.num_missing_variables}")
+    if result.asked_clarification:
+        followup = "I want safe, long-term growth and I might need the money for a house down payment in about five years."
+        final_answer = ClarificationGenerator(config, generator=generator).generate_conversation_answer(
+            [
+                {"role": "user", "content": example.user_request},
+                {"role": "assistant", "content": result.response_text},
+                {"role": "user", "content": followup},
+            ]
+        )
+        typer.echo(f"\nSimulated follow-up: {followup}")
+        typer.echo(f"Final answer after clarification: {final_answer.answer}")
     typer.echo(f"\nFull trace:")
     typer.echo(json.dumps(result.trace, indent=2, default=str))
 
