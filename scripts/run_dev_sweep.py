@@ -64,6 +64,14 @@ def main() -> None:
     best_row: dict[str, Any] | None = None
     fallback_row: dict[str, Any] | None = None
 
+    targeted_payload = run_experiment(
+        config=deepcopy(config),
+        methods=["targeted_clarify"],
+        limit=args.limit,
+        output_root=output_root / "_targeted_baseline",
+    )
+    targeted_metrics = targeted_payload["metrics"]["targeted_clarify"]
+
     for initial_samples, max_rounds, threshold in itertools.product((3, 5, 7), (1, 2), (0.75, 0.80, 0.85)):
         resolved = deepcopy(config)
         resolved["intent_resampling"]["initial_samples"] = initial_samples
@@ -73,10 +81,11 @@ def main() -> None:
         tag = f"k{initial_samples}_r{max_rounds}_c{str(threshold).replace('.', '')}"
         payload = run_experiment(
             config=resolved,
-            methods=["targeted_clarify", "resample_clarify"],
+            methods=["resample_clarify"],
             limit=args.limit,
             output_root=output_root / tag,
         )
+        payload["metrics"]["targeted_clarify"] = targeted_metrics
         row = _flatten_row(
             payload,
             {

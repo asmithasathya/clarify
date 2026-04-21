@@ -51,3 +51,11 @@ When experiment decisions change:
 3. rebuild the paper
 
 Do not copy numbers into the manuscript by hand.
+
+## Placeholder Policy
+
+The paper should never silently fall back to stale or incompatible artifacts.
+
+- If the fresh pivot-compatible matrix is missing, `main_results.tex` and `efficiency.tex` should stay as explicit placeholder tables.
+- If resampling ablations, student evaluation, repeatability, or audit agreement are unfinished, their generated tables should remain placeholders rather than disappear.
+- Narrative text may mention the currently verified status, but the main claims should stay tied to completed artifact roots only.

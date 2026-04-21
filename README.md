@@ -284,6 +284,19 @@ Paper:
 - [docs/job_parallelism.md](docs/job_parallelism.md)
 - [docs/paper.md](docs/paper.md)
 
+## Spotlight Presentation
+
+An HTML spotlight deck lives in:
+
+- [presentation/spotlight.html](presentation/spotlight.html)
+- [presentation/README.md](presentation/README.md)
+
+The deck is intentionally synchronized with the manuscript's current state:
+
+- verified results are shown explicitly
+- unfinished experiment phases are rendered as placeholders
+- legacy clarification-only artifacts are not presented as final pivot results
+
 ## Make Targets
 
 ```bash

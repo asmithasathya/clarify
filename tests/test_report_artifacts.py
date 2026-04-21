@@ -1,6 +1,7 @@
 import csv
 import json
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -9,6 +10,7 @@ from scripts.audit_agreement import _cohen_kappa
 from scripts.export_audit import _stratified_sample
 from scripts.plan_jobs import main as plan_jobs_main
 from scripts.paper_tables import main as paper_tables_main
+from scripts.run_dev_sweep import main as run_dev_sweep_main
 from scripts.run_research_pipeline import main as run_research_pipeline_main
 from scripts.run_report_pipeline import main as run_report_pipeline_main
 from src.utils.config import load_config
@@ -251,6 +253,66 @@ def test_plan_jobs_uses_manifest_reader_not_jq(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "read_manifest_value.py" in captured.out
     assert "jq" not in captured.out
+
+
+def test_dev_sweep_runs_targeted_once(monkeypatch, tmp_path):
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_experiment(*, config, methods, limit=None, output_root=None):
+        calls.append(tuple(methods))
+        output_root = Path(output_root)
+        if methods == ["targeted_clarify"]:
+            return {
+                "metrics": {
+                    "targeted_clarify": {
+                        "task_success_rate": 0.4,
+                        "appropriate_action_rate": 0.8,
+                    }
+                },
+                "output_dir": str(output_root),
+            }
+        return {
+            "metrics": {
+                "resample_clarify": {
+                    "task_success_rate": 0.45,
+                    "appropriate_action_rate": 0.81,
+                    "avg_task_model_calls": 7.0,
+                    "avg_estimated_cost": 7.0,
+                    "mean_intent_confidence": 0.7,
+                }
+            },
+            "output_dir": str(output_root),
+        }
+
+    monkeypatch.setattr("scripts.run_dev_sweep.run_experiment", fake_run_experiment)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_dev_sweep.py",
+            "--config",
+            "configs/report_baselines.yaml",
+            "--output-dir",
+            str(tmp_path / "dev_sweep"),
+            "--limit",
+            "2",
+        ],
+    )
+    run_dev_sweep_main()
+
+    assert calls[0] == ("targeted_clarify",)
+    assert calls.count(("targeted_clarify",)) == 1
+    assert all(call == ("resample_clarify",) for call in calls[1:])
+
+
+def test_spotlight_presentation_is_placeholder_safe():
+    html = Path("presentation/spotlight.html").read_text()
+
+    assert "<h2><code>resample_clarify</code> in one slide</h2>" in html
+    assert "<code>targeted_clarify</code>" in html
+    assert "Fresh qwen3_30b test gate" in html
+    assert "teacher rollouts, SFT, and eval" in html
+    assert "pending fresh pivot-compatible matrix" in html
 
 
 def test_aggregate_baseline_matrix_tracks_incomplete_leaves(tmp_path):
