@@ -32,6 +32,16 @@ def _summarize_counter(counter_map: dict[str, int], limit: int = 5) -> str:
     return f"{head}, +{len(items) - limit} more"
 
 
+def _summarize_domain_cell(dataset_name: str, split_stats: dict[str, object]) -> str:
+    domain_map = split_stats.get("by_domain", {})
+    if not isinstance(domain_map, dict) or not domain_map:
+        return "n/a"
+    if dataset_name == "infoquest":
+        n_unique = len(domain_map)
+        return f"{n_unique} unique setting descriptions"
+    return _summarize_counter(domain_map)
+
+
 def _write_table(
     path: Path,
     headers: list[str],
@@ -141,17 +151,17 @@ def main() -> None:
                     split_name,
                     split_stats["n_examples"],
                     _summarize_counter(split_stats["by_ambiguity_type"]),
-                    _summarize_counter(split_stats["by_domain"]),
+                    _summarize_domain_cell(stats_name.replace("_stats.json", ""), split_stats),
                 ]
             )
     if dataset_rows:
         _write_table(
             output_dir / "dataset_stats.tex",
-            ["Dataset", "Split", "N", "Ambiguity", "Domains"],
+            ["Dataset", "Split", "N", "Ambiguity", "Domain summary"],
             dataset_rows,
             "Dataset composition for frozen report runs.",
             "tab:dataset-stats",
-            column_spec="lllp{0.26\\linewidth}p{0.26\\linewidth}",
+            column_spec="lllp{0.26\\linewidth}p{0.22\\linewidth}",
         )
     else:
         _placeholder_table(
@@ -179,13 +189,13 @@ def main() -> None:
             output_dir / "repeatability.tex",
             ["Dataset", "Model", "Method", "Slice", "Drift", "MaxDelta"],
             repeat_rows,
-            "Repeatability check over a fixed 10\\% slice.",
+            "Repeatability check over a fixed 10% slice.",
             "tab:repeatability",
         )
     else:
         _placeholder_table(
             output_dir / "repeatability.tex",
-            "Repeatability check over a fixed 10\\% slice.",
+            "Repeatability check over a fixed 10% slice.",
             "tab:repeatability",
             "Pending completion of the key-claim repeatability runs.",
         )

@@ -5,6 +5,14 @@ When a long-running phase has not finished yet, the corresponding table is inten
 
 As of April 21, 2026, the strongest completed pivot-specific result is the InfoQuest development sweep. The first winning configuration, \texttt{k3\_r1\_c08}, improves task-success rate from \texttt{0.24} for \texttt{targeted\_clarify} to \texttt{0.29} for \texttt{resample\_clarify}, while preserving \texttt{1.00} appropriate-action rate. That result is sufficient to justify the fresh test-set gate, but it is not yet the final paper claim. The fresh \texttt{qwen3\_30b} test matrix, the selective-resampling ablation suite, and the student-distillation results are still in progress, so those sections remain explicit placeholders below.
 
+\paragraph{How to read this section.}
+The generated tables fall into three categories:
+\begin{itemize}[leftmargin=1.5em]
+\item \textbf{Real pivot-compatible results}: fresh tables produced from the new pivot artifact roots.
+\item \textbf{Legacy reference context}: earlier clarification-only results, which are discussed in the surrounding text but are not reused as the main pivoted tables.
+\item \textbf{Explicit placeholders}: tables whose upstream phase is unfinished. These are deliberate and should be read as ``this experiment is part of the design, but its artifact root is not ready yet.''
+\end{itemize}
+
 \input{generated/main_results.tex}
 \input{generated/ablations.tex}
 \input{generated/student_results.tex}

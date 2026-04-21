@@ -11,3 +11,6 @@ The evaluation compares five inference-time methods over the same Tinker-hosted 
 \end{itemize}
 
 For the student phase, the repository exports teacher rollouts into stage-level SFT records and preference pairs. The intended training path is modular: the student learns the same structured stage outputs used by the teacher wrapper, so the distilled model plugs into the existing runtime without changing the pipeline architecture.
+
+\paragraph{Workflow phases.}
+The end-to-end workflow is intentionally gated. Phase~1 develops and evaluates the teacher method: frozen data preparation, a development sweep on InfoQuest-dev, calibrator fitting, a fresh test-set gate on the primary teacher model, and selective-resampling ablations. Phase~2 begins only if that gate is strong enough: teacher rollout export on InfoQuest-train, LoRA SFT for the 4B student, and student evaluation on both held-out test sets. Phase~3 is optional: if the SFT student is promising, the repository can also prepare preference data and a DPO configuration for a later refinement pass.

@@ -1,2 +1,3 @@
-matrix_root=outputs/report_pipeline_20260414_123119/baseline_matrix
-ablation_root=outputs/report_pipeline_20260414_123119/ablations
+matrix_root=outputs/research_pipeline_20260420_094025/baseline_matrix
+ablation_root=outputs/research_pipeline_20260420_094025/ablations
+student_root=outputs/research_pipeline_20260420_094025/student_eval

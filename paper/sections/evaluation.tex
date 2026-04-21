@@ -3,5 +3,7 @@
 All report runs use a separate LLM judge from the task model. In addition to task-success and action-appropriateness metrics, the pivoted evaluation tracks intent-confidence, resampling frequency, call budget, latency, and estimated cost. We also export a 100-example manual audit slice to measure judge-human agreement on both answer correctness and action appropriateness, and we run repeatability checks only on the key claims rather than the full matrix.
 Until the audit is annotated or repeatability finishes, those tables remain as explicit manuscript placeholders.
 
+The paper therefore has three evidence layers. First, the main matrix measures end-task success and action quality across methods and models. Second, the ablation suite isolates which parts of \texttt{resample\_clarify} matter. Third, the audit and repeatability slices test whether the judge-based findings are reliable enough to support the headline claims. The placeholder tables below exist so that the manuscript remains structurally complete even when those long-running or human-in-the-loop phases are not yet finished.
+
 \input{generated/repeatability.tex}
 \input{generated/audit_agreement.tex}

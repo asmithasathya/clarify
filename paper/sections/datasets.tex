@@ -2,4 +2,6 @@
 
 The pivoted workflow uses a frozen local snapshot of InfoQuest with deterministic train/dev/test splits for teacher development and student distillation, plus ClarifyBench v1 as a held-out generalization benchmark. The data-preparation scripts validate schema integrity, seed-group consistency, and split manifests before any report run.
 
+InfoQuest is the only source used for teacher development and student training. ClarifyBench v1 is intentionally held out from training so that it functions as a genuine generalization check. In the generated table below, the InfoQuest ``domain'' summary refers to unique setting descriptions from the original dataset rather than a small fixed taxonomy.
+
 \input{generated/dataset_stats.tex}
