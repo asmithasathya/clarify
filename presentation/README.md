@@ -29,8 +29,19 @@ The deck is self-contained and uses keyboard navigation:
 - `Home`: first slide
 - `End`: last slide
 
-The deck is intentionally explicit about current project status:
+What this deck now covers:
 
-- verified content is shown as results
-- unfinished artifacts are shown as pending placeholders
-- legacy clarification-only outputs are not presented as final pivot results
+- full project framing, not just the old clarification benchmark
+- frozen datasets and split policy
+- legacy baseline context and why it is legacy-only
+- the new `resample_clarify` method and calibrator
+- Phase 1 teacher evaluation, Phase 2 student distillation, and optional Phase 3 DPO
+- end-to-end runtime, sharding, docs, and operator workflow
+- manuscript status and exact placeholder mapping for unfinished artifacts
+
+Placeholder policy:
+
+- verified artifacts are shown as verified results
+- unfinished artifacts are shown as explicit placeholders
+- legacy clarification-only outputs are labeled as reference-only, not final pivot results
+- the presentation is meant to stay safe to show even while live runs are still in progress
