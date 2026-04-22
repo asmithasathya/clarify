@@ -129,9 +129,10 @@ def test_build_generator_uses_tinker_backend(monkeypatch):
     assert sample_kwargs["sampling_params"].kwargs["stop"] == [99]
 
 
-def test_tinker_generator_requires_api_key(monkeypatch):
+def test_tinker_generator_requires_api_key(monkeypatch, tmp_path):
     _install_fake_tinker(monkeypatch)
     monkeypatch.delenv("TINKER_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
 
     config = {
         "model": {
@@ -264,3 +265,62 @@ def test_tinker_generator_refreshes_once_on_auth_failure(monkeypatch):
 
     assert text == "decoded output"
     assert _RetryServiceClient.create_calls == 2
+
+
+def test_tinker_generator_retries_multiple_auth_failures(monkeypatch):
+    auth_error_cls = type("AuthenticationError", (Exception,), {})
+
+    class _RetrySamplingClient(_FakeSamplingClient):
+        def __init__(self, fail=True):
+            super().__init__()
+            self.fail = fail
+
+        def sample(self, **kwargs):
+            self.sample_kwargs = kwargs
+            if self.fail:
+                return _FakeFuture(exc=auth_error_cls("Invalid JWT"))
+            return super().sample(**kwargs)
+
+    class _RetryServiceClient(_FakeServiceClient):
+        create_calls = 0
+
+        def create_sampling_client(self, **kwargs):
+            type(self).latest_kwargs = kwargs
+            fail = type(self).create_calls < 2
+            type(self).create_calls += 1
+            type(self).latest_client = _RetrySamplingClient(fail=fail)
+            return type(self).latest_client
+
+    fake_tinker = ModuleType("tinker")
+    fake_tinker.ServiceClient = _RetryServiceClient
+    fake_tinker.AuthenticationError = auth_error_cls
+    fake_tinker.types = SimpleNamespace(
+        ModelInput=_FakeModelInput,
+        SamplingParams=_FakeSamplingParams,
+    )
+    monkeypatch.setitem(sys.modules, "tinker", fake_tinker)
+    monkeypatch.setenv("TINKER_API_KEY", "test-key")
+
+    config = {
+        "model": {
+            "generator": {
+                "backend": "tinker",
+                "base_model": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+                "api_key_env_var": "TINKER_API_KEY",
+            }
+        },
+        "runtime": {
+            "resilience": {
+                "tinker_request_max_attempts": 4,
+                "tinker_auth_retry_attempts": 2,
+                "tinker_retry_base_delay_seconds": 0,
+                "tinker_retry_max_delay_seconds": 0,
+            }
+        },
+    }
+
+    generator = TinkerGenerator(config)
+    text = generator.generate([{"role": "user", "content": "hello"}])
+
+    assert text == "decoded output"
+    assert _RetryServiceClient.create_calls == 3

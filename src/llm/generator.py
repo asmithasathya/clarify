@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Sequence, Type, TypeVar
 
@@ -763,6 +764,18 @@ class TinkerGenerator(BaseGenerator):
         model_cfg = config.get("model", {}).get("generator", {})
         self.api_key_env_var = model_cfg.get("api_key_env_var", "TINKER_API_KEY")
         self.api_key = self._load_api_key()
+        resilience_cfg = config.get("runtime", {}).get("resilience", {})
+        self.request_max_attempts = max(1, int(resilience_cfg.get("tinker_request_max_attempts", 6)))
+        self.auth_retry_attempts = max(0, int(resilience_cfg.get("tinker_auth_retry_attempts", 1)))
+        self.retry_base_delay_seconds = max(0.0, float(resilience_cfg.get("tinker_retry_base_delay_seconds", 5.0)))
+        self.retry_max_delay_seconds = max(
+            self.retry_base_delay_seconds,
+            float(resilience_cfg.get("tinker_retry_max_delay_seconds", 60.0)),
+        )
+        if resilience_cfg.get("disable_tinker_telemetry", True):
+            os.environ.setdefault("TINKER_TELEMETRY", "0")
+        if resilience_cfg.get("enable_tinker_subprocess_sampling", False):
+            os.environ.setdefault("TINKER_SUBPROCESS_SAMPLING", "1")
 
         try:
             import tinker
@@ -814,6 +827,35 @@ class TinkerGenerator(BaseGenerator):
     def _raise_auth_error(self, exc: Exception) -> None:
         guidance = _tinker_auth_guidance(self.api_key_env_var, self.api_key)
         raise EnvironmentError(f"Tinker authentication failed: {exc}. {guidance}") from exc
+
+    def _is_transient_error(self, exc: Exception) -> bool:
+        message = f"{exc.__class__.__name__}: {exc}".lower()
+        markers = (
+            "timeout",
+            "timed out",
+            "connection reset",
+            "connection aborted",
+            "connection refused",
+            "connection closed",
+            "broken pipe",
+            "network is unreachable",
+            "temporary failure",
+            "temporarily unavailable",
+            "remote disconnected",
+            "server disconnected",
+            "service unavailable",
+            "too many requests",
+            "rate limit",
+            "429",
+            "502",
+            "503",
+            "504",
+        )
+        return any(marker in message for marker in markers)
+
+    def _retry_delay_seconds(self, attempt_index: int) -> float:
+        delay = self.retry_base_delay_seconds * (2 ** attempt_index)
+        return min(delay, self.retry_max_delay_seconds)
 
     def _infer_stop_sequences(self) -> list[int] | None:
         eos_token_id = getattr(self.tokenizer, "eos_token_id", None)
@@ -903,7 +945,8 @@ class TinkerGenerator(BaseGenerator):
         if self.stop_sequences:
             sampling_kwargs["stop"] = self.stop_sequences
 
-        for attempt in range(2):
+        auth_attempts = 0
+        for attempt in range(self.request_max_attempts):
             try:
                 future = self.sampling_client.sample(
                     prompt=self._prompt_from_messages(messages),
@@ -914,12 +957,50 @@ class TinkerGenerator(BaseGenerator):
                 generated_tokens = self._extract_generated_tokens(result)
                 return self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
             except Exception as exc:
-                if self._is_auth_error(exc) and attempt == 0:
-                    LOGGER.warning("Tinker auth failed during generation; rebuilding client once: %s", exc)
-                    self._refresh_client()
+                is_auth = self._is_auth_error(exc)
+                is_transient = self._is_transient_error(exc)
+                if is_auth:
+                    if auth_attempts >= self.auth_retry_attempts:
+                        LOGGER.error(
+                            "Tinker auth failure persisted after %s in-process retries; failing fast so the outer retry wrapper can restart a fresh process: %s",
+                            self.auth_retry_attempts,
+                            exc,
+                        )
+                        self._raise_auth_error(exc)
+                    auth_attempts += 1
+                    delay = self._retry_delay_seconds(auth_attempts - 1)
+                    LOGGER.warning(
+                        "Tinker auth failure during generation; rebuilding client and retrying in %.1fs (%s/%s): %s",
+                        delay,
+                        auth_attempts,
+                        self.auth_retry_attempts,
+                        exc,
+                    )
+                    try:
+                        self._refresh_client()
+                    except Exception as refresh_exc:
+                        LOGGER.warning("Tinker client rebuild failed during auth retry (%s/%s): %s", auth_attempts, self.auth_retry_attempts, refresh_exc)
+                    time.sleep(delay)
                     continue
-                if self._is_auth_error(exc):
-                    self._raise_auth_error(exc)
+
+                has_retry = attempt < self.request_max_attempts - 1
+                if is_transient:
+                    if not has_retry:
+                        raise
+                    delay = self._retry_delay_seconds(attempt)
+                    LOGGER.warning(
+                        "Tinker transient failure during generation; rebuilding client and retrying in %.1fs (%s/%s): %s",
+                        delay,
+                        attempt + 1,
+                        self.request_max_attempts,
+                        exc,
+                    )
+                    try:
+                        self._refresh_client()
+                    except Exception as refresh_exc:
+                        LOGGER.warning("Tinker client rebuild failed during transient retry (%s/%s): %s", attempt + 1, self.request_max_attempts, refresh_exc)
+                    time.sleep(delay)
+                    continue
                 raise
 
         raise RuntimeError("Unreachable Tinker generation state.")

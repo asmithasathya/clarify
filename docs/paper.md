@@ -35,12 +35,18 @@ This requires `pdflatex` on `PATH`.
 
 The manuscript is centered on:
 
-- intent stabilization via selective resampling
+- intent stabilization via structured resampling
 - clarification as a fallback rather than the only interesting behavior
 - a baseline matrix that retains the older clarification policies
 - resampling ablations
 - modular student distillation
 - efficiency and reproducibility
+
+Current narrative status:
+
+- the development sweep still supports the pivot
+- the first fresh `InfoQuest test / qwen3_30b` gate is a negative result for the original selective weak-point controller
+- the paper should now describe that failure explicitly and frame the next rerun as a simplified controller revision, not as a silent continuation of the old method
 
 ## Updating The Narrative
 

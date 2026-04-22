@@ -39,6 +39,13 @@ runtime:
     teacher_shard_count_infoquest: 4
     teacher_shard_count_clarifybench: 3
     rollout_shard_count: 4
+  resilience:
+    tinker_request_max_attempts: 6
+    tinker_auth_retry_attempts: 1
+    tinker_retry_base_delay_seconds: 5
+    tinker_retry_max_delay_seconds: 60
+    disable_tinker_telemetry: true
+    enable_tinker_subprocess_sampling: false
 
 understand:
   ambiguity_threshold: 0.5
@@ -55,6 +62,9 @@ intent_resampling:
   confidence_threshold: 0.80
   clarify_if_low_confidence: true
   clarification_target_threshold: 0.70
+  selective_repair_enabled: false
+  fallback_question_mode: generic
+  use_calibration_for_decisions: false
   resample_stages:
     - ambiguity_detection
     - intent_modeling

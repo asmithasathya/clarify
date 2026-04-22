@@ -7,10 +7,13 @@ The evaluation compares five inference-time methods over the same Tinker-hosted 
 \item \textbf{generic\_hedge}: answer directly with hedging language.
 \item \textbf{generic\_clarify}: always ask a generic clarification question.
 \item \textbf{targeted\_clarify}: detect ambiguity, model candidate interpretations, choose a response strategy, and continue to a final answer after follow-up when appropriate.
-\item \textbf{resample\_clarify}: sample multiple ambiguity and intent hypotheses, score agreement, selectively resample the weakest stage, calibrate intent confidence, and clarify only when uncertainty remains above threshold.
+\item \textbf{resample\_clarify}: sample multiple ambiguity and intent hypotheses, score agreement, run a full repair pass when the intent state is unstable, report calibrated intent confidence for analysis, and use generic clarification as the default fallback when uncertainty remains above threshold.
 \end{itemize}
 
 For the student phase, the repository exports teacher rollouts into stage-level SFT records and preference pairs. The intended training path is modular: the student learns the same structured stage outputs used by the teacher wrapper, so the distilled model plugs into the existing runtime without changing the pipeline architecture.
+
+\paragraph{Current controller revision.}
+The first live test gate showed that the initial selective weak-point controller over-spent compute while still clarifying on almost every example. The repository therefore now tests a simplified controller: one repair pass refreshes the full ambiguity-intent-strategy bundle rather than a single weak stage, the confidence calibrator is treated as a reporting layer rather than the main action gate, and the default fallback question is generic rather than targeted. The ablation suite is retained so the manuscript can quantify whether this simplification really fixes the failure mode.
 
 \paragraph{Workflow phases.}
 The end-to-end workflow is intentionally gated. Phase~1 develops and evaluates the teacher method: frozen data preparation, a development sweep on InfoQuest-dev, calibrator fitting, a fresh test-set gate on the primary teacher model, and selective-resampling ablations. Phase~2 begins only if that gate is strong enough: teacher rollout export on InfoQuest-train, LoRA SFT for the 4B student, and student evaluation on both held-out test sets. Phase~3 is optional: if the SFT student is promising, the repository can also prepare preference data and a DPO configuration for a later refinement pass.

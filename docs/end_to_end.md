@@ -52,6 +52,12 @@ Then fit the calibrator from the selected dev run:
 
 This is the baseline section of the paper.
 
+Current status note:
+
+- the first fresh `InfoQuest test / qwen3_30b` gate for the original selective controller underperformed (`resample_clarify = 0.22`, `targeted_clarify = 0.26`, `generic_clarify = 0.275`)
+- the active fix path is a simpler `resample_clarify` revision: full repair pass, generic clarification fallback, calibration used mainly for reporting
+- rerun that fix into a new output root before starting Phase 2
+
 ## 5. Ablations
 
 ```bash
@@ -71,6 +77,12 @@ This is the baseline section of the paper.
 ```
 
 This is the mechanism section of the paper.
+
+Interpretation guide for the current run:
+
+- if the full-repair style ablations outperform the base controller, selective weak-point repair is likely the problem
+- if generic-question fallback outperforms the base controller, targeted clarification generation is likely the problem
+- if no-calibration barely changes the result, calibration is not the main bottleneck
 
 ## 6. Audit
 

@@ -5,6 +5,8 @@ When a long-running phase has not finished yet, the corresponding table is inten
 
 As of April 21, 2026, the strongest completed pivot-specific result is the InfoQuest development sweep. The first winning configuration, \texttt{k3\_r1\_c08}, improves task-success rate from \texttt{0.24} for \texttt{targeted\_clarify} to \texttt{0.29} for \texttt{resample\_clarify}, while preserving \texttt{1.00} appropriate-action rate. That result is sufficient to justify the fresh test-set gate, but it is not yet the final paper claim. The fresh \texttt{qwen3\_30b} test matrix, the selective-resampling ablation suite, and the student-distillation results are still in progress, so those sections remain explicit placeholders below.
 
+As of April 22, 2026, one fresh pivot-compatible gate leaf is complete: \texttt{InfoQuest test / qwen3\_30b}. That gate is a negative result for the first controller revision. \texttt{resample\_clarify} reaches \texttt{0.22} task-success rate, below both \texttt{targeted\_clarify} at \texttt{0.26} and \texttt{generic\_clarify} at \texttt{0.275}. The failure mode is clear in the efficiency metrics: the method uses roughly \texttt{13.93} task-model calls per example and almost always ends in clarification after resampling (\texttt{0.96}), with zero examples resolved without clarification. Partial ablations already suggest a simpler controller should do better: the strongest in-progress signal is the full-repair variant, while single-sample and no-calibration variants do not explain the loss on their own.
+
 \paragraph{How to read this section.}
 The generated tables fall into three categories:
 \begin{itemize}[leftmargin=1.5em]

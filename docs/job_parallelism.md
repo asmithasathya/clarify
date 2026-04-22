@@ -47,6 +47,15 @@ For `4` terminals:
 - teacher rollout export resumes at the shard and rollout level
 - the research pipeline script can skip completed phases with `--skip-*`
 - paper generation is cheap and can be rerun whenever artifacts change
+- for unstable network conditions, wrap long jobs with `scripts/retry_forever.py` so a crashed process restarts and resumes from disk automatically
+- Tinker telemetry is disabled by default and subprocess sampling is disabled by default in the runtime config; after a sleep/resume event, the preferred recovery path is to fail fast and let `retry_forever.py` restart a fresh process
+
+Example:
+
+```bash
+./.venv/bin/python scripts/retry_forever.py --retry-delay 30 -- \
+  ./.venv/bin/python scripts/run_sharded_leaf.py ...
+```
 
 ## Common Pattern
 

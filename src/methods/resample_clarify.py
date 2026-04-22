@@ -241,6 +241,9 @@ def run_resample_clarify(
     clarification_fallback_threshold = float(rs_cfg.get("clarification_fallback_threshold", 0.80))
     clarify_if_low_confidence = bool(rs_cfg.get("clarify_if_low_confidence", True))
     resample_stages = list(rs_cfg.get("resample_stages", []))
+    selective_repair_enabled = bool(rs_cfg.get("selective_repair_enabled", False))
+    fallback_question_mode = str(rs_cfg.get("fallback_question_mode", "generic")).lower()
+    use_calibration_for_decisions = bool(rs_cfg.get("use_calibration_for_decisions", False))
 
     calibrator = None if _ablation_enabled(config, "no_calibration") else _load_calibrator(config)
     task_model_calls = 0
@@ -297,16 +300,22 @@ def run_resample_clarify(
         if clarification_agg is not None:
             stage_reports.append(clarification_agg.stage_report)
 
+        decision_stability_report = build_stability_report(
+            stage_reports,
+            weak_point_threshold=weak_point_threshold,
+            calibrator=calibrator if use_calibration_for_decisions else None,
+        )
         stability_report = build_stability_report(
             stage_reports,
             weak_point_threshold=weak_point_threshold,
             calibrator=calibrator,
         )
         trace["latest_stability_report"] = stability_report.model_dump()
+        trace["latest_decision_stability_report"] = decision_stability_report.model_dump()
 
         if _ablation_enabled(config, "clarify_immediately") and ambiguity_agg.assessment.is_ambiguous:
             repair_decision = decide_repair_action(
-                stability_report,
+                decision_stability_report,
                 round_index=max_rounds,
                 max_rounds=max_rounds,
                 confidence_threshold=confidence_threshold,
@@ -316,7 +325,7 @@ def run_resample_clarify(
             )
         else:
             repair_decision = decide_repair_action(
-                stability_report,
+                decision_stability_report,
                 round_index=current_round,
                 max_rounds=max_rounds,
                 confidence_threshold=confidence_threshold,
@@ -337,7 +346,11 @@ def run_resample_clarify(
             break
 
         current_round += 1
-        resample_all = _ablation_enabled(config, "no_selective_resample") or _ablation_enabled(config, "resample_all_stages")
+        resample_all = (
+            not selective_repair_enabled
+            or _ablation_enabled(config, "no_selective_resample")
+            or _ablation_enabled(config, "resample_all_stages")
+        )
         stages_to_refresh: set[str]
         if resample_all:
             stages_to_refresh = {"ambiguity_detection", "intent_modeling", "strategy_selection"}
@@ -432,13 +445,13 @@ def run_resample_clarify(
         )
     else:
         clarify_by_fallback = (
-            final_stability_report.overall_confidence < clarification_fallback_threshold
-            or bool(final_stability_report.weak_points)
+            decision_stability_report.overall_confidence < clarification_fallback_threshold
+            or bool(decision_stability_report.weak_points)
         ) and not _ablation_enabled(config, "no_clarification_fallback")
 
         strategy = strategy_agg.decision.strategy if strategy_agg is not None else "ask_clarification"
         if clarify_by_fallback or strategy == "ask_clarification":
-            use_generic = _ablation_enabled(config, "generic_question_fallback")
+            use_generic = _ablation_enabled(config, "generic_question_fallback") or fallback_question_mode == "generic"
             target_variable = (
                 ambiguity_agg.assessment.missing_variables[0].variable
                 if ambiguity_agg.assessment.missing_variables
@@ -560,4 +573,3 @@ def run_resample_clarify(
         "latency_seconds": result.latency_seconds,
     }
     return result
-

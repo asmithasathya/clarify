@@ -2,5 +2,6 @@ method:
   name: resample_clarify
   description: >
     Intent-stabilization method. Sample ambiguity and intent hypotheses,
-    selectively resample weak stages, and ask a clarification only if
-    intent confidence remains too low after the repair budget.
+    run a full repair pass when the intent state is unstable, and ask a
+    generic clarification question only if confidence remains too low
+    after the repair budget.

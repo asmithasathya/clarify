@@ -1,6 +1,6 @@
 # clarify
 
-Research code for **intent stabilization via selective resampling**. The core idea is to make a model work harder on understanding user intent before it answers: sample multiple structured intent hypotheses, detect unstable stages, selectively resample the weak stage, and ask a clarification question only if intent confidence remains low.
+Research code for **intent stabilization via structured resampling**. The core idea is to make a model work harder on understanding user intent before it answers: sample multiple structured intent hypotheses, detect unstable intent states, run a repair pass, and ask a clarification question only if intent confidence remains low.
 
 ## What The Repo Does
 
@@ -21,7 +21,7 @@ The repo now supports the full research workflow:
 - optional DPO preparation
 - sharded/resumable evaluation, audit export, and manuscript table generation
 
-The current paper framing treats the first four methods as baselines and `resample_clarify` as the main method.
+The current paper framing treats the first four methods as baselines and `resample_clarify` as the main method. As of April 22, 2026, the first fresh `InfoQuest test / qwen3_30b` gate showed that the original selective weak-point controller underperformed the stronger clarification baselines, so the active rerun path now uses a simpler full-repair controller plus generic clarification fallback.
 
 ## Models
 
@@ -46,6 +46,8 @@ export TINKER_API_KEY=...
 ```
 
 You can also place the key in `.env`. See `.env.example`.
+
+For long-running `tmux` jobs, using `.env` is safer than relying only on `export TINKER_API_KEY=...` in each window, because restarted processes reload `.env` automatically.
 
 ## Data Artifacts
 
@@ -118,6 +120,15 @@ Run the full matrix over the frozen test splits:
 ```
 
 This runs all report methods across all report task models and datasets. It is resumable, and the sharded leaf workflow can be used when a single leaf is too slow.
+
+Current practical note: if the first fresh gate underperforms, do not proceed directly into teacher rollouts. Finish the ablations, simplify the controller, and rerun the primary `qwen3_30b` gate into a fresh output directory before spending compute on Phase 2.
+
+If you expect transient network drops, wrap long-running commands with the retry wrapper so they restart and resume automatically:
+
+```bash
+./.venv/bin/python scripts/retry_forever.py --retry-delay 30 -- \
+  ./.venv/bin/python scripts/run_sharded_leaf.py ...
+```
 
 ### 3. Resample Ablations
 
