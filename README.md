@@ -1,6 +1,6 @@
-# clarify
+# Intent Stabilization for conversational AI Agents
 
-Research code and final report for **intent stabilization for ambiguous user requests via all-stage resampling**.
+Research code and final report for **intent stabilization for ambiguous user requests**.
 
 The project studies an inference-time wrapper that samples structured ambiguity, intent, and response-strategy hypotheses before answering. When the sampled state is unstable, the wrapper resamples the full stage bundle and asks a clarification question if uncertainty remains high.
 
