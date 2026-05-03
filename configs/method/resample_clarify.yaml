@@ -1,0 +1,7 @@
+method:
+  name: resample_clarify
+  description: >
+    Intent-stabilization method. Sample ambiguity, intent, and strategy
+    hypotheses; when the intent state is unstable, refresh all upstream
+    understanding stages together instead of repairing only one weak point;
+    then ask a generic clarification question if uncertainty remains high.

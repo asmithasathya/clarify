@@ -1,0 +1,19 @@
+\begin{table}[t]
+\centering
+\caption{All-stage stabilization ablations on InfoQuest test with Qwen3-30B.}
+\label{tab:ablations}
+\begin{tabular}{lrrrrr}
+\toprule
+Ablation & TSR & AAR & Clarify & Calls & Resample \\
+\midrule
+Clarify immediately & 0.245 & 1.000 & 0.376 & 12.00 & 0.000 \\
+Generic question fallback & 0.245 & 1.000 & 0.659 & 14.09 & 0.955 \\
+No calibration & 0.245 & 1.000 & 0.445 & 14.12 & 0.950 \\
+No clarification fallback & 0.215 & 1.000 & 0.464 & 14.14 & 0.940 \\
+No selective resample & 0.255 & 1.000 & 0.578 & 14.79 & 0.930 \\
+One round only & 0.245 & 1.000 & 0.446 & 14.10 & 0.930 \\
+Resample all stages & 0.265 & 1.000 & 0.472 & 14.82 & 0.940 \\
+Single sample only & 0.225 & 1.000 & 0.560 & 6.00 & 0.000 \\
+\bottomrule
+\end{tabular}
+\end{table}

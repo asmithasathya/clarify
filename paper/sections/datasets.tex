@@ -1,0 +1,7 @@
+\section{Datasets}
+
+We evaluate on two frozen ambiguous-request datasets. InfoQuest is a 1,000-example collection of underspecified information-seeking requests split into 600 train, 200 development, and 200 test examples, grouped by seed identifier so related variants do not cross splits. The final results use the 200-example test split.
+
+ClarifyBench v1 is a 120-example in-repository benchmark designed for multi-turn clarification behavior. It covers four ambiguity types--lexical, missing context, referential, and underspecified requests--across five domains: finance, health, shopping, software, and travel. We use the 90-example test split as a held-out generalization check. Each example has a simulated user reply and a gold answer so that clarification policies can be evaluated after the follow-up turn.
+
+Both datasets are validated before report runs for schema completeness, duplicate identifiers, split membership, seed grouping, and metadata coverage.

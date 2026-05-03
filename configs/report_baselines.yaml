@@ -1,0 +1,47 @@
+includes:
+  - configs/default.yaml
+
+paths:
+  outputs_dir: outputs
+  baseline_dir: outputs/baselines
+
+data:
+  split: test
+
+report:
+  methods:
+    - direct_answer
+    - generic_hedge
+    - generic_clarify
+    - targeted_clarify
+    - resample_clarify
+  datasets:
+    - name: infoquest
+      split: test
+    - name: clarifybench
+      split: test
+  task_models:
+    - label: qwen3_4b
+      base_model: Qwen/Qwen3-4B-Instruct-2507
+    - label: qwen3_30b
+      base_model: Qwen/Qwen3-30B-A3B-Instruct-2507
+    - label: gpt_oss_120b
+      base_model: openai/gpt-oss-120b
+  judge_model:
+    label: llama33_70b
+    base_model: meta-llama/Llama-3.3-70B-Instruct
+  primary_ablation_model: qwen3_30b
+  audit_target_size: 100
+  teacher_model_label: qwen3_30b
+  student_model_label: qwen3_4b
+
+evaluation:
+  llm_judge:
+    enabled: true
+    base_model: meta-llama/Llama-3.3-70B-Instruct
+    version: judge-v1
+  repeatability:
+    slice_fraction: 0.1
+    tolerance: 0.02
+    methods:
+      - resample_clarify

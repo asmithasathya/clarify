@@ -1,0 +1,18 @@
+\begin{table}[t]
+\centering
+\caption{Dataset composition for frozen report runs.}
+\label{tab:dataset-stats}
+\begin{tabular}{lllp{0.26\linewidth}p{0.22\linewidth}}
+\hline
+Dataset & Split & N & Ambiguity & Domain summary \\
+\hline
+infoquest & snapshot & 1000 & missing\_context:1000 & 1000 unique setting descriptions \\
+infoquest & train & 600 & missing\_context:600 & 600 unique setting descriptions \\
+infoquest & dev & 200 & missing\_context:200 & 200 unique setting descriptions \\
+infoquest & test & 200 & missing\_context:200 & 200 unique setting descriptions \\
+clarifybench\_v1 & full & 120 & lexical:30, missing\_context:30, referential:30, underspecified:30 & finance:24, health:24, shopping:24, software:24, travel:24 \\
+clarifybench\_v1 & dev & 30 & lexical:8, referential:8, missing\_context:7, underspecified:7 & finance:6, health:6, shopping:6, software:6, travel:6 \\
+clarifybench\_v1 & test & 90 & missing\_context:23, underspecified:23, lexical:22, referential:22 & finance:18, health:18, shopping:18, software:18, travel:18 \\
+\hline
+\end{tabular}
+\end{table}

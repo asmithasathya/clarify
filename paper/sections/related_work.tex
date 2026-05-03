@@ -1,0 +1,16 @@
+\section{Related Work}
+
+\paragraph{Clarification and ambiguous question answering.}
+Qulac formulates clarification in open-domain information-seeking conversations and shows that a single useful clarification can substantially improve retrieval quality \citep{aliannejadi2019qulac}. ClariQ extends this line into a shared benchmark for ranking clarifying questions in ambiguous dialogue settings \citep{aliannejadi2020clariq}. AmbigQA studies open-domain questions with multiple plausible interpretations and evaluates systems by requiring disambiguated question-answer pairs \citep{min2020ambigqa}.
+
+\paragraph{Pragmatic intent and user modeling.}
+The method is also related to pragmatic accounts of communication, where listeners infer intended meaning from context. Rational Speech Act models formalize pragmatic language interpretation as probabilistic inference over speaker meaning \citep{goodman2016rsa}, and recent surveys argue that grounded language systems need common ground, task goals, and context to figure out ambiguity \citep{fried2022pragmatics}. User-modeling work makes the same point: the Lumiere project used Bayesian user models to infer software users' goals and needs from actions and queries \citep{horvitz1998lumiere}, while human-AI collaboration work shows that agents perform better when they explicitly model human behavior or goals \citep{carroll2019utility,liu2016goal,zhi2024clips}.
+
+\paragraph{Sampling-based reasoning and uncertainty.}
+Chain-of-thought prompting shows that intermediate reasoning traces can improve large-model reasoning \citep{wei2022chain}; self-consistency then improves robustness by sampling multiple reasoning paths and selecting the answer supported by the most paths \citep{wang2023selfconsistency}. Recent uncertainty work makes a similar move from individual strings to meaning-level agreement. Semantic entropy clusters sampled generations by semantic equivalence to detect confabulations in free-form generation \citep{farquhar2024semanticentropy}.
+
+\paragraph{Calibration and selective prediction.}
+Calibration asks whether a model's stated confidence corresponds to empirical correctness \citep{guo2017calibration}. Selective classification studies systems that may abstain when confidence is too low, trading coverage for lower risk \citep{geifman2017selective}. For language models, verbalized confidence and self-evaluation have been studied as ways to expose uncertainty without direct access to model internals \citep{lin2022verbalized,kadavath2022know}.
+
+\paragraph{LLM-based evaluation.}
+Open-ended assistant outputs are difficult to score with heuristic and exact/fuzzy-match metrics. LLM-as-judge evaluation has been used as a scalable approximation to human preference judgments, while also introducing bias and reliability concerns \citep{zheng2023llmjudge}.

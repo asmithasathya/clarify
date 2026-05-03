@@ -1,0 +1,24 @@
+\section{Introduction}
+
+
+
+The quality of AI assistants should be measured by how well it understands the user's intent. AI models are now great at generating text in a fluent, human-like way, but the gap remaining is whether they understand ambiguous requests as well as humans do.
+
+We study how before committing to an answer or a clarification, whether sampling multiple structured interpretations of the request helps AI model intent recognition. Our proposed wrapper breaks a request down into three stages: ambiguity assessment, candidate intent modeling, and response strategy. It samples each stage, aggregates any disagreement, does an all-stage resampling when the state is unstable, and asks a clarification if uncertainty remains high. We call this procedure \emph{intent stabilization}.
+
+Our research question is: does sampling-based stabilization improve ambiguity handling enough to justify its extra model calls? On InfoQuest, the all-stage wrapper matches generic clarification and slightly beats targeted clarification. On ClarifyBench, it remains safe but underperforms the best clarification baseline. The ablations and K-sensitivity runs show that resampling can help, but cost and calibration are still major problems.
+
+
+The primary contributions are:
+
+\begin{itemize}
+
+\item A model-agnostic intent-stabilization wrapper that uses structured multi-sampling rather than token-level internals.
+
+\item Frozen ambiguous-request evaluation splits for InfoQuest and ClarifyBench with automatic validation and judge-based scoring.
+
+\item A comparison against direct answering, hedged answering, generic clarification, and targeted clarification baselines.
+
+\item An ablation analysis showing which stabilization choices matter and a cost analysis showing why all-stage resampling is not yet a drop-in replacement for simple clarification.
+
+\end{itemize}

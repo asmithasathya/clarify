@@ -1,0 +1,22 @@
+\begin{table}[t]
+\centering
+\caption{Main results on frozen test splits with Qwen3-30B as the task model. TSR is task-success rate; AAR is appropriate-action rate.}
+\label{tab:main-results}
+\begin{tabular}{llrrrr}
+\toprule
+Dataset & Method & TSR & AAR & Answer & Clarify \\
+\midrule
+InfoQuest & Direct answer & 0.065 & 0.000 & 0.218 & 0.000 \\
+InfoQuest & Generic hedge & 0.025 & 0.000 & 0.208 & 0.000 \\
+InfoQuest & Generic clarify & 0.240 & 1.000 & 0.499 & 0.658 \\
+InfoQuest & Targeted clarify & 0.235 & 1.000 & 0.482 & 0.329 \\
+InfoQuest & All-stage stabilization & 0.240 & 1.000 & 0.492 & 0.655 \\
+\midrule
+ClarifyBench & Direct answer & 0.144 & 0.000 & 0.158 & 0.000 \\
+ClarifyBench & Generic hedge & 0.022 & 0.000 & 0.031 & 0.000 \\
+ClarifyBench & Generic clarify & 0.522 & 1.000 & 0.627 & 0.566 \\
+ClarifyBench & Targeted clarify & 0.544 & 1.000 & 0.627 & 0.230 \\
+ClarifyBench & All-stage stabilization & 0.500 & 1.000 & 0.609 & 0.578 \\
+\bottomrule
+\end{tabular}
+\end{table}

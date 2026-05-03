@@ -1,0 +1,5 @@
+\section{Reproducibility}
+
+The repository includes frozen data splits, deterministic split manifests, resumable inference, and per-run metrics files. Reported task-model runs use Qwen3-30B; judge runs use Llama-3.3-70B.
+
+The most important reproducibility caveat is non-determinism. Even at low final-answer temperature, we can get small variations through sampling, retries, and model-infrastructure changes.

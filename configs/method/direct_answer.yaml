@@ -1,0 +1,5 @@
+method:
+  name: direct_answer
+  description: >
+    Answer immediately with no ambiguity checking.
+    Baseline: just answer the question.

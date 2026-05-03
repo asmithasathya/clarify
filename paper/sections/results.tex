@@ -1,0 +1,17 @@
+\section{Results}
+
+Table~\ref{tab:main-results} gives the main comparison on the Qwen3-30B task model. Direct answering and hedged answering perform poorly on both datasets because all evaluation examples require ambiguity handling. Generic and targeted clarification are strong baselines: they always choose a safe action and often recover a useful final answer after the simulated follow-up.
+
+All-stage intent stabilization is competitive on InfoQuest, matching generic clarification at 0.240 TSR and slightly exceeding targeted clarification at 0.235. On ClarifyBench, however, it goes to 0.500 TSR, below generic clarification at 0.522 and targeted clarification at 0.544. This is the main empirical conclusion: resampling stabilizes the controller's action choice, but the current policy does not reliably turn extra intent samples into better final answers across datasets.
+
+\input{generated/main_results.tex}
+
+\paragraph{Ablations.}
+Table~\ref{tab:ablations} isolates the resampling design. The strongest ablation is the all-stage repair variant, which reaches 0.265 TSR on InfoQuest while preserving 1.000 AAR. Single-sample behavior is weaker at 0.225, and removing clarification fallback is worse at 0.215. Calibration changes alone do not explain the result. The evidence supports all-stage repair as the best variant of the wrapper, even though the confirmed two-dataset result remains cost-heavy and mixed.
+
+\input{generated/ablations.tex}
+
+\paragraph{Cost, confidence, and \(K\).}
+The confirmed all-stage run uses 14.88 task-model calls per InfoQuest example and 13.80 per ClarifyBench example, compared with roughly two calls for simple clarification. Table~\ref{tab:dev-sensitivity} shows that increasing \(K\) is not a free improvement: \(K=7\) has the best dev TSR (0.240) but costs 26.95 calls, while \(K=1\) is close (0.230) at 6.07 calls. Confidence is also not calibrated as final-answer correctness. For example, \(K=1\) reports mean confidence 0.957 but only 0.230 TSR, whereas \(K=7\) reports lower mean confidence 0.639 with slightly higher TSR. We therefore use confidence as a conservative control signal, not as a probability of being correct.
+
+\input{generated/dev_sensitivity.tex}

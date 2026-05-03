@@ -1,0 +1,9 @@
+\section{Evaluation}
+
+The model in the our runs is \texttt{Qwen/Qwen3-30B-A3B-Instruct-2507}. We use a separate judge model, \texttt{meta-llama/Llama-3.3-70B-Instruct}, so that the task model is not judging its own outputs. We use Tinker with deterministic final-answer settings where supported and stochastic sampling for the intent-stabilization stages.
+
+\paragraph{Metrics.}
+We report task-success rate (TSR), appropriate-action rate (AAR), final answer score, clarification quality, task-model calls, latency, and resampling rate. TSR is the main end-task metric. After the policy acts and, when applicable, receives the simulated user reply, the final answer must be similar to the gold target. AAR measures whether the policy chose a safe action under ambiguity; because the test sets are ambiguous on purpose, direct answering scores a low AAR even when the answer seems fluent on the surface-level. Clarification quality measures whether the clarification question helps resolve the missing intent rather than asking a high-level, simple follow-up.
+
+\paragraph{Interpretation.}
+These metrics separate safety from usefulness. A method can score a perfect AAR by always clarifying and still fail to improve TSR if the clarification is generic or the final answer is still weak. Direct answering can also sometimes be the correct answer but can be penalized for unsafe behavior under ambiguity. This is why we frame the question as whether intent stabilization improves final success beyond simple clarification and whether any gain justifies its additional calls.

@@ -1,0 +1,21 @@
+\section{Methods}
+
+All methods are inference-time policies over the same task model. The first four are baselines; the fifth is the proposed intent-stabilization wrapper.
+
+\begin{itemize}
+\item \textbf{Direct answer}: answer the user request immediately without ambiguity handling.
+\item \textbf{Generic hedge}: answer directly while using hedging language.
+\item \textbf{Generic clarify}: ask a broad clarification question before giving a final answer after the simulated user reply.
+\item \textbf{Targeted clarify}: run a structured ambiguity detector and intent modeler, then ask a more targeted clarification question before the final answer.
+\item \textbf{All-stage intent stabilization}: sample multiple ambiguity assessments, intent hypotheses, and response strategies; aggregate agreement; resample the full stage stack if the state is unstable; and ask a clarification if uncertainty remains.
+\end{itemize}
+
+\paragraph{All-stage intent stabilization.}
+Given a request \(x\), the wrapper draws \(K\) structured samples for the ambiguity, intent-modeling, and response-strategy stages. Each sample is parsed into a schema. The aggregator measures whether samples agree that the request is ambiguous, converge on the same plausible intents, and recommend the same action. These agreement features become the reported intent-confidence score.
+
+Formally, the wrapper treats the task model as an implicit sampler over latent interpretations. For sample \(j\), it draws an ambiguity assessment \(a_j \sim q_\theta(a \mid x)\), an intent hypothesis \(i_j \sim q_\theta(i \mid x, a_j)\), and a response strategy \(s_j \sim q_\theta(s \mid x, a_j, i_j)\). The empirical bundle \(\{(a_j,i_j,s_j)\}_{j=1}^K\) approximates uncertainty over user intent without requiring direct access to \(P_\theta(i \mid x)\). Stability is then measured by agreement across sampled structured outputs rather than by the model's verbal confidence alone.
+
+If agreement is below threshold, the wrapper spends a small repair budget to resample the full ambiguity-intent-strategy bundle. If the repaired state is still unstable, it asks a clarification question rather than answering directly. In these benchmarks, clarification is the safe fallback because every evaluation example is intentionally ambiguous.
+
+\paragraph{Why all-stage repair?}
+The ablation suite compares single-sample behavior, no clarification fallback, one repair round, resampling all stages, and related variants. The strongest variant resamples the full state together. This result is consistent with the structure of the task: ambiguity judgments, candidate intents, and strategy decisions are coupled. Repairing them independently can leave the controller with internally inconsistent evidence.

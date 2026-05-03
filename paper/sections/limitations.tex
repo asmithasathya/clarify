@@ -1,0 +1,9 @@
+\section{Limitations}
+
+The primary limitation is that all reported scores are LLM-as-a-judge-based. A different judge model reduces direct self-evaluation bias, but it does not replace a human audit since LLMs are not equivalent to humans. The benchmark design also makes clarification the safe action for every test example, so appropriate-action rate is easier for always-clarify methods than it would be in a mixed benchmark containing many unambiguous requests.
+
+The method is also expensive. All-stage stabilization makes around seven times more task-model calls than simple clarification on InfoQuest. This cost is only justified if the additional samples produce better final answers, which the current results do not consistently represent. We also use agreement among structured text samples rather than token log probabilities, hidden states, or retrieval-grounded evidence for the sake of reproducability, simplicity, and model-agnosticism. This may cause us to miss uncertainty signals that are only seen inside open-weight models.
+
+The current policy also tends to clarify after resampling rather than confidently resolving ambiguity without a user turn. The next step should be a better policy for converting stable intent hypotheses into targeted clarifying questions or high-confidence narrowed answers.
+
+The confidence estimator should also be interpreted cautiously. The current score is derived from agreement among structured samples and is useful for deciding when to avoid direct answering, but the K-sensitivity results show that it is not calibrated as a probability of final correctness. The sensitivity study varies \(K\) at fixed repair samples, repair rounds, threshold, and temperature; a full grid over all controller parameters remains future work.

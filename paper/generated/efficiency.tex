@@ -1,0 +1,17 @@
+\begin{table}[t]
+\centering
+\caption{Inference footprint. Calls are average task-model calls per example; latency is wall-clock seconds per example in the recorded run.}
+\label{tab:efficiency}
+\begin{tabular}{llrrrr}
+\toprule
+Dataset & Method & Calls & Latency & Cost units & Resample \\
+\midrule
+InfoQuest & Direct answer & 1.00 & 32.7 & 1.00 & 0.000 \\
+InfoQuest & Generic hedge & 1.00 & 53.1 & 1.00 & 0.000 \\
+InfoQuest & Generic clarify & 2.00 & 77.3 & 2.00 & 0.000 \\
+InfoQuest & Targeted clarify & 2.00 & 203.8 & 2.00 & 0.000 \\
+InfoQuest & All-stage stabilization & 14.88 & 52.3 & 12.88 & 0.960 \\
+ClarifyBench & All-stage stabilization & 13.80 & 46.9 & 12.80 & 0.933 \\
+\bottomrule
+\end{tabular}
+\end{table}
